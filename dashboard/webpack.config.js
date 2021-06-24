@@ -180,6 +180,7 @@ if (process.env.NODE_ENV === 'production') {
       ...(process.env.DEV_HOST ? { host: process.env.DEV_HOST } : undefined),
       historyApiFallback: true,
       port: 1234,
+      public: process.env.WEBPACK_PUBLIC_DEV_URL,
     },
   });
 }
