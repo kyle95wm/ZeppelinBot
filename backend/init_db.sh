@@ -8,7 +8,11 @@ set -e
 GUILD_ID="579466138992508928"
 GUILD_NAME="bot stuff"
 USER_ID="255834596766253057"
+BASE_URL="https://dev-api.red-panda.red" # used for logs
 
+OWNERS=(
+	$USER_ID
+)
 
 DIR=$(dirname $0)
 
@@ -16,6 +20,7 @@ set -o allexport
 [ -f "$DIR/bot.env" ] && source "$DIR/bot.env"
 [ -f "$DIR/api.env" ] && source "$DIR/api.env"
 set +o allexport
+
 RUN_QUERY="
 mysql \
 	-h $DB_HOST \
@@ -29,6 +34,26 @@ if ! command -v "mysql" &> /dev/null; then
 	exit 1
 fi
 
+_OWNERS="["
+
+for owner in "${OWNERS[@]}"; do
+	_OWNERS+="\"$owner\","
+done
+
+OWNERS=$(jq . -c <<< "${_OWNERS::-1}]")
+
+GLOBAL_CONFIG=$(
+	jq -c <<JSON
+{
+	"url": "$BASE_URL",
+	"owners": $OWNERS,
+	"plugins": {
+		"bot_control": {}
+	}
+}
+JSON
+)
+
 $RUN_QUERY <<SQL
 CREATE DATABASE IF NOT EXISTS $DB_DATABASE;
 SQL
@@ -38,6 +63,7 @@ SET time_zone = '+0:00';
 SQL
 
 echo "Running database migrations"
+cd $DIR
 npm run --silent migrate-dev
 
 $RUN_QUERY -D $DB_DATABASE <<SQL
@@ -50,6 +76,10 @@ RETURNING 'INSERT allowed_guilds';
 INSERT INTO api_permissions (guild_id, target_id, type, permissions)
 VALUES ($GUILD_ID, $USER_ID, 'USER', 'OWNER')
 RETURNING 'INSERT api_permissions';
+
+INSERT INTO configs (\`key\`, config, is_active, edited_by)
+VALUES ('global', '$GLOBAL_CONFIG', 1, $USER_ID)
+RETURNING 'INSERT configs';
 
 COMMIT;
 SQL
