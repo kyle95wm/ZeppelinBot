@@ -43,8 +43,9 @@ done
 OWNERS=$(jq . -c <<< "${_OWNERS::-1}]")
 
 GLOBAL_CONFIG=$(
-	jq -c <<JSON
+	jq -c . <<JSON
 {
+  "prefix": "zep:",
 	"url": "$BASE_URL",
 	"owners": $OWNERS,
 	"plugins": {
