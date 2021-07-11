@@ -1266,22 +1266,13 @@ export async function confirm(bot: Client, channel: TextableChannel, userId: str
   return reply && reply.name === "✅";
 }
 
-const prefixLines = (content: string, prefix: string) =>
-  content
-    .split("\n")
-    .map(l => prefix + l)
-    .join("\n");
 export function messageSummary(msg: SavedMessage) {
   // Regular text content
-  let result = prefixLines(
-    ("```\n" + (msg.data.content ? disableCodeBlocks(msg.data.content) : "<no text content>") + "```").trim(),
-    "> ",
-  );
+  let result = "```\n" + (msg.data.content ? disableCodeBlocks(msg.data.content) : "<no text content>") + "```";
 
   // Rich embed
   const richEmbed = (msg.data.embeds || []).find(e => (e as Embed).type === "rich");
-  if (richEmbed)
-    result += "Embed:\n" + prefixLines(("```" + disableCodeBlocks(JSON.stringify(richEmbed)) + "```").trim(), "> ");
+  if (richEmbed) result += "Embed:```" + disableCodeBlocks(JSON.stringify(richEmbed)) + "```";
 
   // Attachments
   if (msg.data.attachments) {
