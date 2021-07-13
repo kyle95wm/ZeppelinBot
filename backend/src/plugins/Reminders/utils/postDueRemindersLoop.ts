@@ -2,7 +2,6 @@ import { TextChannel } from "eris";
 import { GuildPluginData } from "knub";
 import { RemindersPluginType } from "../types";
 import moment from "moment-timezone";
-import humanizeDuration from "humanize-duration";
 import { disableLinkPreviews } from "knub/dist/helpers";
 import { SECONDS } from "../../../utils";
 
@@ -17,12 +16,11 @@ export async function postDueRemindersLoop(pluginData: GuildPluginData<Reminders
       try {
         // Only show created at date if one exists
         if (moment.utc(reminder.created_at).isValid()) {
-          const target = moment.utc();
-          const diff = target.diff(moment.utc(reminder.created_at, "YYYY-MM-DD HH:mm:ss"));
-          const result = humanizeDuration(diff, { largest: 2, round: true });
           await channel.createMessage({
             content: disableLinkPreviews(
-              `Reminder for <@!${reminder.user_id}>: ${reminder.body} \n\`Set at ${reminder.created_at} (${result} ago)\``,
+              `Reminder for <@!${reminder.user_id}>: ${reminder.body} \nSet ${moment
+                .utc(reminder.created_at)
+                .format("[<t:]X[:R>]")}`,
             ),
             allowedMentions: {
               users: [reminder.user_id],
