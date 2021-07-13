@@ -63,7 +63,7 @@ export async function getCaseSummary(
     ? await timeAndDate.inMemberTz(requestMemberId, timestamp)
     : timeAndDate.inGuildTz(timestamp);
   const prettyTimestamp = useRelativeTime
-    ? moment.utc().to(timestamp)
+    ? timestampWithTz.format("[<t:]X[:R>]")
     : timestampWithTz.format(timeAndDate.getDateFormat("date"));
 
   const icon = getCaseIcon(pluginData, theCase.type);
@@ -79,7 +79,7 @@ export async function getCaseSummary(
   let caseType = (caseAbbreviations[theCase.type] || String(theCase.type)).toUpperCase();
   caseType = (caseType + "    ").slice(0, 4);
 
-  let line = `${icon} **\`${caseType}\`** \`[${prettyTimestamp}]\` ${caseTitle} ${reason}`;
+  let line = `${icon} **\`${caseType}\`** [${prettyTimestamp}] ${caseTitle} ${reason}`;
   if (leftoverNotes > 1) {
     line += ` *(+${leftoverNotes} ${leftoverNotes === 1 ? "note" : "notes"})*`;
   }
