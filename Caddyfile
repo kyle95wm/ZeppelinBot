@@ -1,0 +1,15 @@
+zep.red-panda.red {
+  handle /api/* {
+    uri strip_prefix /api
+    reverse_proxy localhost:6000
+  }
+
+  handle {
+    file_server {
+      root /usr/src/app/dashboard/dist
+    }
+
+    root * /usr/src/app/dashboard/dist
+    try_files {path} /index.html
+  }
+}
