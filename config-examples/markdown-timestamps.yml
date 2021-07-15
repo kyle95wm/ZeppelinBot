@@ -1,0 +1,9 @@
+plugins:
+  logs:
+    config:
+      timestamp_format: '[<t:]X[>]'
+
+  time_and_date:
+    config:
+      date_formats:
+        pretty_datetime: '[<t:]X[>]'

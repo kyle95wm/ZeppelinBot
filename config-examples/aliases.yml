@@ -1,0 +1,50 @@
+aliases:
+  roles: &roles
+    member_roles: &member_roles
+    member:        &roles_member        '284168639421087747'
+    trusted:       &roles_trusted       '267737224966045706'
+
+    pronoun_roles: &pronoun_roles
+      he_him:        &roles_he_him        '764140517541806091'
+      they_them:     &roles_they_them     '764140606196023359'
+      she_her:       &roles_she_her       '764140658520621076'
+
+    staff_roles: &staff_roles
+      staff:         &roles_staff         '267737218464874496'
+      moderator:     &roles_moderator     '269663345253154826'
+      administrator: &roles_administrator '267737638155321354'
+
+  channels: &channels
+    meta_channels: &meta_channels
+      stargoard:   &channels_starboard '832634320115990599'
+
+    general_channels: &general_channels
+      general:     &channels_general     '267735321695748096'
+      bots:        &channels_bots        '728049907025313813'
+
+    staff_channels: &staff_channels
+      admins:      &channels_admins      '728052274454069278'
+
+    log_channels: &log_channels
+      cases:       &channels_cases       '857734807781638234'
+      mod_logs:    &channels_mod_logs    '728091420208005160'
+      public_logs: &channels_public_logs '728094069456109578'
+
+plugins:
+  cases:
+    config:
+      case_log_channel: *channels_cases
+
+  roles:
+    overrides:
+      - role: *roles_member
+        config:
+          assignable_roles:
+            <<: *pronoun_roles
+
+  starboard:
+    config:
+      boards:
+        main:
+          channel_id: *channels_starboard
+          enabled: true
