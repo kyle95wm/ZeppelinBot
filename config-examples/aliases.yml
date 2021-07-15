@@ -1,8 +1,8 @@
 aliases:
   roles: &roles
     member_roles: &member_roles
-    member:        &roles_member        '284168639421087747'
-    trusted:       &roles_trusted       '267737224966045706'
+    member:        &roles_member          '284168639421087747'
+    trusted:       &roles_trusted         '267737224966045706'
 
     pronoun_roles: &pronoun_roles
       he_him:        &roles_he_him        '764140517541806091'
@@ -16,7 +16,7 @@ aliases:
 
   channels: &channels
     meta_channels: &meta_channels
-      stargoard:   &channels_starboard '832634320115990599'
+      stargoard:   &channels_starboard   '832634320115990599'
 
     general_channels: &general_channels
       general:     &channels_general     '267735321695748096'
