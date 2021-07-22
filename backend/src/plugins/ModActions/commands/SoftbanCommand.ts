@@ -10,7 +10,7 @@ const opts = {
 };
 
 export const SoftbanCmd = modActionsCmd({
-  trigger: "softban",
+  trigger: ["softban", "softben"],
   permission: "can_kick",
   description: trimPluginDescription(`
         "Softban" the specified user by banning and immediately unbanning them. Effectively a kick with message deletions.

@@ -12,7 +12,7 @@ import { CasesPlugin } from "../../Cases/CasesPlugin";
 import { LogType } from "../../../data/LogType";
 
 export const MassunbanCmd = modActionsCmd({
-  trigger: "massunban",
+  trigger: ["massunban", "massunben"],
   permission: "can_massunban",
   description: "Mass-unban a list of user IDs",
 

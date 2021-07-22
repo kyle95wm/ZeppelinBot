@@ -17,7 +17,7 @@ import { humanizeDurationShort } from "../../../humanizeDurationShort";
 import { load } from "js-yaml";
 
 export const MassbanCmd = modActionsCmd({
-  trigger: "massban",
+  trigger: ["massban", "massben"],
   permission: "can_massban",
   description: "Mass-ban a list of user IDs",
 
