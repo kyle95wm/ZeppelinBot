@@ -8,6 +8,8 @@ export interface ZeppelinGuildConfig extends BaseConfig<any> {
   // Deprecated
   timezone?: string;
   date_formats?: any;
+
+  aliases?: unknown;
 }
 
 export const ZeppelinGuildConfigSchema = t.type({
