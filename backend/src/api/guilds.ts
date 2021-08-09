@@ -46,9 +46,15 @@ function formatConfigToTypeScript(schema, wrapInBraces: boolean = true) {
   }
 }
 
-const plugins = guildPlugins
-  .map(p => ({ name: p.name, schema: formatConfigToTypeScript(p.configSchema) }))
-  .map(p => `${p.name}: {config: ${p.schema}, overrides: \`({[key: any]: any, config: ${p.schema}})[]\`}`);
+const plugins = guildPlugins.map(p => {
+  const config = formatConfigToTypeScript(p.configSchema);
+
+  return `${p.name}: {
+        config?: ${config},
+        overrides?: (Override & {config: ${config}})[],
+        replaceDefaultOverrides?: boolean,
+      }`;
+});
 
 const configSchema = { ...ZeppelinGuildConfigSchema } as any;
 
@@ -56,17 +62,34 @@ delete configSchema.props.plugins;
 
 const topLevel = formatConfigToTypeScript(configSchema, false);
 
-const header = [
-  "type tDelayString = string;",
-  "type TRegex = string;",
-  "type tColor = number;",
-  "type Integer = number;",
-  "type tValidTimezone = string;",
-];
+const a = `
+type tDelayString = string;
+type TRegex = string;
+type tColor = number;
+type Integer = number;
+type tValidTimezone = string;
 
-const a = `${header.join("\n")}\n\ntype ConfigSchema = {\nplugins:{\n${plugins.join("\n")}\n}, ${topLevel}}`;
+interface Override {
+  level?: string | string[];
+  channel?: string | string[];
+  category?: string | string[];
+  role?: string | string[];
+  user?: string | string[];
+  any?: Override[];
+  all?: Override[];
+  not?: Override;
+}
 
-const filename = resolve(`schema_generator_${Date.now()}.ts`);
+type ConfigSchema = {
+  ${topLevel}
+
+  plugins: {
+    ${plugins.join("\n")},
+  },
+}
+`;
+
+const filename = `/tmp/schema_generator_${Date.now()}.ts`;
 
 let schema: unknown = {};
 
