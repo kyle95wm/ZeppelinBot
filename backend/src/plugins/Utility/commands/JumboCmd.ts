@@ -2,8 +2,8 @@ import { utilityCmd } from "../types";
 import { commandTypeHelpers as ct } from "../../../commandTypes";
 import { downloadFile, isEmoji, SECONDS } from "../../../utils";
 import fs from "fs";
-import sharp from "sharp";
 import twemoji from "twemoji";
+import Jimp from "jimp";
 import { sendErrorMessage } from "../../../pluginUtils";
 
 const fsp = fs.promises;
@@ -14,11 +14,8 @@ async function getBufferFromUrl(url: string): Promise<Buffer> {
 }
 
 async function resizeBuffer(input: Buffer, width: number, height: number): Promise<Buffer> {
-  return sharp(input, { density: 800 })
-    .resize(width, height, {
-      fit: "inside",
-    })
-    .toBuffer();
+  const image = await Jimp.read(input);
+  return image.resize(width, height).getBufferAsync(Jimp.MIME_PNG);
 }
 
 const CDN_URL = "https://twemoji.maxcdn.com/2/svg";
