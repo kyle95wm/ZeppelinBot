@@ -6,10 +6,10 @@ zep.red-panda.red {
 
   handle {
     file_server {
-      root /usr/src/app/dashboard/dist
+      root /usr/src/app/dist
     }
 
-    root * /usr/src/app/dashboard/dist
+    root * /usr/src/app/dist
     try_files {path} /index.html
   }
 }

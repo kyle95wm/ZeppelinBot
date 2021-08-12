@@ -1,0 +1,27 @@
+*
+
+!/package*
+!/tsconfig.json
+!/tslint.json
+!/Caddyfile
+
+!/assets
+!/shared
+
+!/backend/src
+!/backend/*.env
+!/backend/package*
+!/backend/init_db.sh
+!/backend/tsconfig.json
+!/backend/ormconfig.js
+!/backend/register-tsconfig-paths.js
+
+!/dashboard/src
+!/dashboard/.env
+!/dashboard/package*
+!/dashboard/tailwind.config.js
+!/dashboard/webpack.config.js
+!/dashboard/ts-vue-shim.d.ts
+!/dashboard/tsconfig.json
+
+# vim:ft=gitignore
