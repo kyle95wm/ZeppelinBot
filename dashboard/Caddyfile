@@ -1,0 +1,8 @@
+:80 {
+  file_server {
+    root /usr/src/app/dist
+  }
+
+  root * /usr/src/app/dist
+   try_files {path} /index.html
+}

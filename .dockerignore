@@ -23,5 +23,6 @@
 !/dashboard/webpack.config.js
 !/dashboard/ts-vue-shim.d.ts
 !/dashboard/tsconfig.json
+!/dashboard/Caddyfile
 
 # vim:ft=gitignore

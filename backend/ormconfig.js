@@ -32,6 +32,7 @@ module.exports = {
   dateStrings: true,
   synchronize: false,
   connectTimeout: 2000,
+  migrationsRun: true,
 
   // Entities
   entities: [entities],

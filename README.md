@@ -24,6 +24,14 @@ These instructions are intended for bot development only.
 
 👉 **No support is offered for self-hosting the bot!** 👈
 
+### Running the bot with Docker:
+1. Configure `backend/{bot,api}.env`,`dashboard/.env` and `backend/init_db.sh`
+2. `docker-compose up mariadb`
+2. `docker-compose up -d`
+3. `./backend/init_db.sh`
+
+**NOTE:** if the bot and API give an error saying they can't connect to the database even though it is running, run `docker-compose bot api`. Sometimes Docker Compose starts them before the database is running
+
 ### Running the bot
 1. `cd backend`
 2. `npm ci`

@@ -9,6 +9,8 @@ GUILD_ID="579466138992508928"
 GUILD_NAME="bot stuff"
 USER_ID="255834596766253057"
 BASE_URL="https://dev-api.red-panda.red" # used for logs
+# remove the following line if you are not using docker-compose
+DOCKER_COMPOSE_SERVICE=mariadb
 
 OWNERS=(
 	$USER_ID
@@ -29,9 +31,8 @@ mysql \
 	-s
 "
 
-if ! command -v "mysql" &> /dev/null; then
-	echo "You do not have mysql installed on your system. Please install it and try again."
-	exit 1
+if [[ "$DOCKER_COMPOSE_SERVICE" != "" ]]; then
+  RUN_QUERY="docker-compose exec -T mariadb mysql -u $DB_USER -p$DB_PASSWORD"
 fi
 
 _OWNERS="["
@@ -40,7 +41,7 @@ for owner in "${OWNERS[@]}"; do
 	_OWNERS+="\"$owner\","
 done
 
-OWNERS=$(jq . -c <<< "${_OWNERS::-1}]")
+OWNERS=$(jq . -c <<< "${_OWNERS%?}]")
 
 GLOBAL_CONFIG=$(
 	jq -c . <<JSON
@@ -63,9 +64,9 @@ $RUN_QUERY -D $DB_DATABASE <<SQL
 SET time_zone = '+0:00';
 SQL
 
-echo "Running database migrations"
-cd $DIR
-npm run --silent migrate-dev
+# echo "Running database migrations"
+# cd $DIR
+# npm run --silent migrate-dev
 
 $RUN_QUERY -D $DB_DATABASE <<SQL
 START TRANSACTION;

@@ -33,7 +33,7 @@ FROM caddy:alpine
 
 WORKDIR /usr/src/app
 
-COPY Caddyfile /etc/caddy/Caddyfile
+COPY ./dashboard/Caddyfile /etc/caddy/Caddyfile
 
 COPY --from=builder /usr/src/app/dashboard/dist dist/
 

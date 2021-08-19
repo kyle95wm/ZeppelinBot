@@ -1,0 +1,45 @@
+version: '3.9'
+
+services:
+  bot:
+    build:
+      context: '.'
+      dockerfile: './bot.Dockerfile'
+    depends_on: ['mariadb']
+    volumes:
+      - './backend/bot.env:/usr/src/app/backend/bot.env'
+
+  api:
+    build:
+      context: '.'
+      dockerfile: './api.Dockerfile'
+    depends_on: ['mariadb']
+    volumes:
+      - './backend/api.env:/usr/src/app/backend/api.env'
+
+  dashboard:
+    build:
+      context: '.'
+      dockerfile: './dashboard.Dockerfile'
+    depends_on: ['api']
+    volumes:
+      - './dashboard/.env:/usr/src/app/dashboard/.env'
+
+  load_balancer:
+    image: 'caddy:alpine'
+    ports: ['8080:80']
+    volumes:
+      - './Caddyfile:/etc/caddy/Caddyfile'
+
+  mariadb:
+    image: 'mariadb'
+    volumes:
+      - 'mariadb_data:/var/lib/mariadb'
+    environment:
+      MARIADB_ROOT_PASSWORD: 'mariadb'
+      MYSQL_USER: 'zep'
+      MYSQL_PASSWORD: 'zeppelinbot'
+      MYSQL_DATABASE: 'zeppelin'
+
+volumes:
+  mariadb_data:
