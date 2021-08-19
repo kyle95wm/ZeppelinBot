@@ -8,7 +8,7 @@ set -e
 GUILD_ID="579466138992508928"
 GUILD_NAME="bot stuff"
 USER_ID="255834596766253057"
-BASE_URL="https://dev-api.red-panda.red" # used for logs
+BASE_URL="https://dev.red-panda.red" # used for logs
 # remove the following line if you are not using docker-compose
 DOCKER_COMPOSE_SERVICE=mariadb
 
@@ -32,7 +32,7 @@ mysql \
 "
 
 if [[ "$DOCKER_COMPOSE_SERVICE" != "" ]]; then
-  RUN_QUERY="docker-compose exec -T mariadb mysql -u $DB_USER -p$DB_PASSWORD"
+  RUN_QUERY="docker-compose exec -T $DOCKER_COMPOSE_SERVICE mysql -u $DB_USER -p$DB_PASSWORD"
 fi
 
 _OWNERS="["
