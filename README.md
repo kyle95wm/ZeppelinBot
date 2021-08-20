@@ -30,7 +30,7 @@ These instructions are intended for bot development only.
 2. `docker-compose up -d`
 3. `./backend/init_db.sh`
 
-**NOTE:** if the bot and API give an error saying they can't connect to the database even though it is running, run `docker-compose bot api`. Sometimes Docker Compose starts them before the database is running
+**NOTE:** if the bot and API give an error saying they can't connect to the database even though it is running, run `docker-compose restart bot api`. Sometimes Docker Compose starts them before the database is running
 
 ### Running the bot
 1. `cd backend`
