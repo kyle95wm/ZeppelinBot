@@ -31,15 +31,12 @@ export async function getCaseEmbed(
   let modName = theCase.mod_name;
   if (theCase.mod_id) modName += `\n<@!${theCase.mod_id}>`;
 
-  const createdAtWithTz = requestMemberId
-    ? await timeAndDate.inMemberTz(requestMemberId, createdAt)
-    : timeAndDate.inGuildTz(createdAt);
-
   const embed: any = {
     title: `${actionTypeStr} - Case #${theCase.case_number}`,
     footer: {
-      text: `Case created on ${createdAtWithTz.format(timeAndDate.getDateFormat("pretty_datetime"))}`,
+      text: "Case created",
     },
+    timestamp: createdAt,
     fields: [
       {
         name: "User",
