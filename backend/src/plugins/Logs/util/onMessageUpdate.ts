@@ -1,10 +1,12 @@
+import { BaseGuildTextChannel, MessageEmbed, Snowflake, ThreadChannel } from "discord.js";
 import { GuildPluginData } from "knub";
-import { LogsPluginType } from "../types";
-import { SavedMessage } from "../../../data/entities/SavedMessage";
-import { Embed } from "eris";
-import { LogType } from "../../../data/LogType";
-import { stripObjectToScalars, resolveUser } from "../../../utils";
 import cloneDeep from "lodash.clonedeep";
+import { channelToTemplateSafeChannel, userToTemplateSafeUser } from "../../../utils/templateSafeObjects";
+import { SavedMessage } from "../../../data/entities/SavedMessage";
+import { LogType } from "../../../data/LogType";
+import { resolveUser } from "../../../utils";
+import { LogsPluginType } from "../types";
+import { logMessageEdit } from "../logFunctions/logMessageEdit";
 
 export async function onMessageUpdate(
   pluginData: GuildPluginData<LogsPluginType>,
@@ -14,13 +16,13 @@ export async function onMessageUpdate(
   // To log a message update, either the message content or a rich embed has to change
   let logUpdate = false;
 
-  const oldEmbedsToCompare = ((oldSavedMessage.data.embeds || []) as Embed[])
+  const oldEmbedsToCompare = ((oldSavedMessage.data.embeds || []) as MessageEmbed[])
     .map(e => cloneDeep(e))
-    .filter(e => (e as Embed).type === "rich");
+    .filter(e => (e as MessageEmbed).type === "rich");
 
-  const newEmbedsToCompare = ((savedMessage.data.embeds || []) as Embed[])
+  const newEmbedsToCompare = ((savedMessage.data.embeds || []) as MessageEmbed[])
     .map(e => cloneDeep(e))
-    .filter(e => (e as Embed).type === "rich");
+    .filter(e => (e as MessageEmbed).type === "rich");
 
   for (const embed of [...oldEmbedsToCompare, ...newEmbedsToCompare]) {
     if (embed.thumbnail) {
@@ -47,11 +49,13 @@ export async function onMessageUpdate(
   }
 
   const user = await resolveUser(pluginData.client, savedMessage.user_id);
-  const channel = pluginData.guild.channels.get(savedMessage.channel_id);
+  const channel = pluginData.guild.channels.resolve(savedMessage.channel_id as Snowflake)! as
+    | BaseGuildTextChannel
+    | ThreadChannel;
 
-  pluginData.state.guildLogs.log(LogType.MESSAGE_EDIT, {
-    user: stripObjectToScalars(user),
-    channel: stripObjectToScalars(channel),
+  logMessageEdit(pluginData, {
+    user,
+    channel,
     before: oldSavedMessage,
     after: savedMessage,
   });

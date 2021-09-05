@@ -1,12 +1,13 @@
-import { zeppelinGuildPlugin } from "../ZeppelinPluginBlueprint";
 import { PluginOptions } from "knub";
-import { ConfigSchema, RolesPluginType } from "./types";
 import { GuildLogs } from "../../data/GuildLogs";
+import { trimPluginDescription } from "../../utils";
+import { zeppelinGuildPlugin } from "../ZeppelinPluginBlueprint";
 import { AddRoleCmd } from "./commands/AddRoleCmd";
-import { RemoveRoleCmd } from "./commands/RemoveRoleCmd";
 import { MassAddRoleCmd } from "./commands/MassAddRoleCmd";
 import { MassRemoveRoleCmd } from "./commands/MassRemoveRoleCmd";
-import { trimPluginDescription } from "../../utils";
+import { RemoveRoleCmd } from "./commands/RemoveRoleCmd";
+import { ConfigSchema, RolesPluginType } from "./types";
+import { LogsPlugin } from "../Logs/LogsPlugin";
 
 const defaultOptions: PluginOptions<RolesPluginType> = {
   config: {
@@ -41,6 +42,7 @@ export const RolesPlugin = zeppelinGuildPlugin<RolesPluginType>()({
   },
 
   configSchema: ConfigSchema,
+  dependencies: () => [LogsPlugin],
   defaultOptions,
 
   // prettier-ignore

@@ -1,24 +1,24 @@
-import { GuildPluginData } from "knub";
-import { MuteOptions, MutesPluginType } from "../types";
-import { ERRORS, RecoverablePluginError } from "../../../RecoverablePluginError";
+import { Snowflake, TextChannel, User } from "discord.js";
 import humanizeDuration from "humanize-duration";
+import { GuildPluginData } from "knub";
+import { userToTemplateSafeUser } from "../../../utils/templateSafeObjects";
+import { CaseTypes } from "../../../data/CaseTypes";
+import { Case } from "../../../data/entities/Case";
+import { LogType } from "../../../data/LogType";
+import { LogsPlugin } from "../../../plugins/Logs/LogsPlugin";
+import { ERRORS, RecoverablePluginError } from "../../../RecoverablePluginError";
+import { renderTemplate, TemplateSafeValueContainer } from "../../../templateFormatter";
 import {
   notifyUser,
-  resolveUser,
-  stripObjectToScalars,
-  ucfirst,
-  UserNotificationResult,
   resolveMember,
+  resolveUser,
+  ucfirst,
   UserNotificationMethod,
+  UserNotificationResult,
 } from "../../../utils";
-import { renderTemplate } from "../../../templateFormatter";
-import { MemberOptions, TextChannel, User } from "eris";
-import { CasesPlugin } from "../../Cases/CasesPlugin";
-import { CaseTypes } from "../../../data/CaseTypes";
-import { LogType } from "../../../data/LogType";
-import { Case } from "../../../data/entities/Case";
-import { LogsPlugin } from "../../../plugins/Logs/LogsPlugin";
 import { muteLock } from "../../../utils/lockNameHelpers";
+import { CasesPlugin } from "../../Cases/CasesPlugin";
+import { MuteOptions, MutesPluginType } from "../types";
 
 export async function muteUser(
   pluginData: GuildPluginData<MutesPluginType>,
@@ -42,7 +42,7 @@ export async function muteUser(
   // No mod specified -> mark Zeppelin as the mod
   if (!muteOptions.caseArgs?.modId) {
     muteOptions.caseArgs = muteOptions.caseArgs ?? {};
-    muteOptions.caseArgs.modId = pluginData.client.user.id;
+    muteOptions.caseArgs.modId = pluginData.client.user!.id;
   }
 
   const user = await resolveUser(pluginData.client, userId);
@@ -58,8 +58,8 @@ export async function muteUser(
   if (member) {
     const logs = pluginData.getPlugin(LogsPlugin);
     // remove and store any roles to be removed/restored
-    const currentUserRoles = member.roles;
-    const memberOptions: MemberOptions = {};
+    const currentUserRoles = [...member.roles.cache.keys()];
+    let newRoles: string[] = currentUserRoles;
     const removeRoles = removeRolesOnMuteOverride ?? config.remove_roles_on_mute;
     const restoreRoles = restoreRolesOnMuteOverride ?? config.restore_roles_on_mute;
 
@@ -67,13 +67,13 @@ export async function muteUser(
     if (!Array.isArray(removeRoles)) {
       if (removeRoles) {
         // exclude managed roles from being removed
-        const managedRoles = pluginData.guild.roles.filter(x => x.managed).map(y => y.id);
-        memberOptions.roles = managedRoles.filter(x => member.roles.includes(x));
-        await member.edit(memberOptions);
+        const managedRoles = pluginData.guild.roles.cache.filter(x => x.managed).map(y => y.id);
+        newRoles = currentUserRoles.filter(r => !managedRoles.includes(r));
+        await member.roles.set(newRoles as Snowflake[]);
       }
     } else {
-      memberOptions.roles = currentUserRoles.filter(x => !(<string[]>removeRoles).includes(x));
-      await member.edit(memberOptions);
+      newRoles = currentUserRoles.filter(x => !(<string[]>removeRoles).includes(x));
+      await member.roles.set(newRoles as Snowflake[]);
     }
 
     // set roles to be restored
@@ -86,32 +86,32 @@ export async function muteUser(
     }
 
     // Apply mute role if it's missing
-    if (!member.roles.includes(muteRole)) {
+    if (!currentUserRoles.includes(muteRole as Snowflake)) {
       try {
-        await member.addRole(muteRole);
+        await member.roles.add(muteRole as Snowflake);
       } catch (e) {
-        const actualMuteRole = pluginData.guild.roles.find(x => x.id === muteRole);
+        const actualMuteRole = pluginData.guild.roles.cache.get(muteRole as Snowflake);
         if (!actualMuteRole) {
           lock.unlock();
-          logs.log(LogType.BOT_ALERT, {
+          logs.logBotAlert({
             body: `Cannot mute users, specified mute role Id is invalid`,
           });
           throw new RecoverablePluginError(ERRORS.INVALID_MUTE_ROLE_ID);
         }
 
-        const zep = await resolveMember(pluginData.client, pluginData.guild, pluginData.client.user.id);
-        const zepRoles = pluginData.guild.roles.filter(x => zep!.roles.includes(x.id));
+        const zep = await resolveMember(pluginData.client, pluginData.guild, pluginData.client.user!.id);
+        const zepRoles = pluginData.guild.roles.cache.filter(x => zep!.roles.cache.has(x.id));
         // If we have roles and one of them is above the muted role, throw generic error
-        if (zepRoles.length >= 0 && zepRoles.some(zepRole => zepRole.position > actualMuteRole.position)) {
+        if (zepRoles.size >= 0 && zepRoles.some(zepRole => zepRole.position > actualMuteRole.position)) {
           lock.unlock();
-          logs.log(LogType.BOT_ALERT, {
+          logs.logBotAlert({
             body: `Cannot mute user ${member.id}: ${e}`,
           });
           throw e;
         } else {
           // Otherwise, throw error that mute role is above zeps roles
           lock.unlock();
-          logs.log(LogType.BOT_ALERT, {
+          logs.logBotAlert({
             body: `Cannot mute users, specified mute role is above Zeppelin in the role hierarchy`,
           });
           throw new RecoverablePluginError(ERRORS.MUTE_ROLE_ABOVE_ZEP);
@@ -125,7 +125,7 @@ export async function muteUser(
     if (moveToVoiceChannel || cfg.kick_from_voice_channel) {
       // TODO: Add back the voiceState check once we figure out how to get voice state for guild members that are loaded on-demand
       try {
-        await member.edit({ channelID: moveToVoiceChannel });
+        await member.edit({ channel: moveToVoiceChannel as Snowflake });
       } catch {} // tslint:disable-line
     }
   }
@@ -151,14 +151,17 @@ export async function muteUser(
 
   const muteMessage =
     template &&
-    (await renderTemplate(template, {
-      guildName: pluginData.guild.name,
-      reason: reason || "None",
-      time: timeUntilUnmute,
-      moderator: muteOptions.caseArgs?.modId
-        ? stripObjectToScalars(await resolveUser(pluginData.client, muteOptions.caseArgs.modId))
-        : "",
-    }));
+    (await renderTemplate(
+      template,
+      new TemplateSafeValueContainer({
+        guildName: pluginData.guild.name,
+        reason: reason || "None",
+        time: timeUntilUnmute,
+        moderator: muteOptions.caseArgs?.modId
+          ? userToTemplateSafeUser(await resolveUser(pluginData.client, muteOptions.caseArgs.modId))
+          : null,
+      }),
+    ));
 
   if (muteMessage && user instanceof User) {
     let contactMethods: UserNotificationMethod[] = [];
@@ -172,7 +175,8 @@ export async function muteUser(
       }
 
       const useChannel = existingMute ? config.message_on_update : config.message_on_mute;
-      const channel = config.message_channel && pluginData.guild.channels.get(config.message_channel);
+      const channel =
+        config.message_channel && pluginData.guild.channels.cache.get(config.message_channel as Snowflake);
       if (useChannel && channel instanceof TextChannel) {
         contactMethods.push({ type: "channel", channel });
       }
@@ -223,19 +227,19 @@ export async function muteUser(
   // Log the action
   const mod = await resolveUser(pluginData.client, muteOptions.caseArgs?.modId);
   if (muteTime) {
-    pluginData.state.serverLogs.log(LogType.MEMBER_TIMED_MUTE, {
-      mod: stripObjectToScalars(mod),
-      user: stripObjectToScalars(user),
+    pluginData.getPlugin(LogsPlugin).logMemberTimedMute({
+      mod,
+      user,
       time: timeUntilUnmute,
       caseNumber: theCase.case_number,
-      reason,
+      reason: reason ?? "",
     });
   } else {
-    pluginData.state.serverLogs.log(LogType.MEMBER_MUTE, {
-      mod: stripObjectToScalars(mod),
-      user: stripObjectToScalars(user),
+    pluginData.getPlugin(LogsPlugin).logMemberMute({
+      mod,
+      user,
       caseNumber: theCase.case_number,
-      reason,
+      reason: reason ?? "",
     });
   }
 

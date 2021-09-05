@@ -1,15 +1,16 @@
-import { modActionsCmd, IgnoredEventType } from "../types";
+import { Snowflake } from "discord.js";
+import { userToTemplateSafeUser } from "../../../utils/templateSafeObjects";
 import { commandTypeHelpers as ct } from "../../../commandTypes";
-import { canActOn, sendErrorMessage, hasPermission, sendSuccessMessage } from "../../../pluginUtils";
-import { resolveUser, resolveMember, stripObjectToScalars } from "../../../utils";
-import { isBanned } from "../functions/isBanned";
-import { readContactMethodsFromArgs } from "../functions/readContactMethodsFromArgs";
-import { formatReasonWithAttachments } from "../functions/formatReasonWithAttachments";
-import { banUserId } from "../functions/banUserId";
-import { ignoreEvent } from "../functions/ignoreEvent";
-import { LogType } from "../../../data/LogType";
 import { CaseTypes } from "../../../data/CaseTypes";
+import { LogType } from "../../../data/LogType";
 import { CasesPlugin } from "../../../plugins/Cases/CasesPlugin";
+import { canActOn, hasPermission, sendErrorMessage, sendSuccessMessage } from "../../../pluginUtils";
+import { resolveMember, resolveUser } from "../../../utils";
+import { formatReasonWithAttachments } from "../functions/formatReasonWithAttachments";
+import { ignoreEvent } from "../functions/ignoreEvent";
+import { isBanned } from "../functions/isBanned";
+import { IgnoredEventType, modActionsCmd } from "../types";
+import { LogsPlugin } from "../../Logs/LogsPlugin";
 
 const opts = {
   mod: ct.member({ option: true }),
@@ -61,14 +62,17 @@ export const ForcebanCmd = modActionsCmd({
       mod = args.mod;
     }
 
-    const reason = formatReasonWithAttachments(args.reason, msg.attachments);
+    const reason = formatReasonWithAttachments(args.reason, [...msg.attachments.values()]);
 
     ignoreEvent(pluginData, IgnoredEventType.Ban, user.id);
     pluginData.state.serverLogs.ignoreLog(LogType.MEMBER_BAN, user.id);
 
     try {
       // FIXME: Use banUserId()?
-      await pluginData.guild.banMember(user.id, 1, reason != null ? encodeURIComponent(reason) : undefined);
+      await pluginData.guild.bans.create(user.id as Snowflake, {
+        days: 1,
+        reason: reason ?? undefined,
+      });
     } catch {
       sendErrorMessage(pluginData, msg.channel, "Failed to forceban member");
       return;
@@ -88,8 +92,8 @@ export const ForcebanCmd = modActionsCmd({
     sendSuccessMessage(pluginData, msg.channel, `Member forcebanned (Case #${createdCase.case_number})`);
 
     // Log the action
-    pluginData.state.serverLogs.log(LogType.MEMBER_FORCEBAN, {
-      mod: stripObjectToScalars(mod.user),
+    pluginData.getPlugin(LogsPlugin).logMemberForceban({
+      mod,
       userId: user.id,
       caseNumber: createdCase.case_number,
       reason,

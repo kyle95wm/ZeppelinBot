@@ -1,13 +1,13 @@
-import { utilityCmd } from "../types";
-import { EmbedWith, multiSorter, resolveMember, sorter } from "../../../utils";
-import { GuildChannel, MessageContent, Role } from "eris";
-import { getCurrentUptime } from "../../../uptime";
+import { GuildChannel, MessageOptions } from "discord.js";
 import humanizeDuration from "humanize-duration";
 import LCL from "last-commit-log";
-import path from "path";
 import moment from "moment-timezone";
 import { rootDir } from "../../../paths";
+import { getCurrentUptime } from "../../../uptime";
+import { multiSorter, resolveMember, sorter } from "../../../utils";
 import { TimeAndDatePlugin } from "../../TimeAndDate/TimeAndDatePlugin";
+import { utilityCmd } from "../types";
+import { shuffle } from "lodash";
 
 export const AboutCmd = utilityCmd({
   trigger: "about",
@@ -40,8 +40,6 @@ export const AboutCmd = utilityCmd({
       version = "?";
     }
 
-    const shard = pluginData.client.shards.get(pluginData.client.guildShardMap[pluginData.guild.id])!;
-
     const lastReload = humanizeDuration(Date.now() - pluginData.state.lastReload, {
       largest: 2,
       round: true,
@@ -49,10 +47,10 @@ export const AboutCmd = utilityCmd({
 
     const basicInfoRows = [
       ["Uptime", prettyUptime],
-      ["Last reload", `${lastReload} ago`],
-      ["Last update", lastUpdate],
+      ["Last config reload", `${lastReload} ago`],
+      ["Last bot update", lastUpdate],
       ["Version", version],
-      ["API latency", `${shard.latency}ms`],
+      ["API latency", `${pluginData.client.ws.ping}ms`],
       ["Server timezone", timeAndDate.getGuildTz()],
     ];
 
@@ -64,56 +62,57 @@ export const AboutCmd = utilityCmd({
     );
     loadedPlugins.sort();
 
-    const aboutContent: MessageContent & { embed: EmbedWith<"title" | "fields"> } = {
-      embed: {
-        title: `About ${pluginData.client.user.username}`,
-        fields: [
-          {
-            name: "Status",
-            value: basicInfoRows
-              .map(([label, value]) => {
-                return `${label}: **${value}**`;
-              })
-              .join("\n"),
-          },
-          {
-            name: `Loaded plugins on this server (${loadedPlugins.length})`,
-            value: loadedPlugins.join(", "),
-          },
-        ],
-      },
+    const aboutContent: MessageOptions = {
+      embeds: [
+        {
+          title: `About ${pluginData.client.user!.username}`,
+          fields: [
+            {
+              name: "Status",
+              value: basicInfoRows.map(([label, value]) => `${label}: **${value}**`).join("\n"),
+            },
+            {
+              name: `Loaded plugins on this server (${loadedPlugins.length})`,
+              value: loadedPlugins.join(", "),
+            },
+          ],
+        },
+      ],
     };
 
     const supporters = await pluginData.state.supporters.getAll();
-    supporters.sort(
-      multiSorter([
-        [r => r.amount, "DESC"],
-        [r => r.name.toLowerCase(), "ASC"],
-      ]),
-    );
+    const shuffledSupporters = shuffle(supporters);
 
     if (supporters.length) {
-      aboutContent.embed.fields.push({
+      const formattedSupporters = shuffledSupporters
+        // Bold every other supporter to make them easy to recognize from each other
+        .map((s, i) => (i % 2 === 0 ? `**${s.name}**` : `__${s.name}__`))
+        .join(" ");
+
+      aboutContent.embeds![0].fields!.push({
         name: "Zeppelin supporters 🎉",
-        value: supporters.map(s => `**${s.name}** ${s.amount ? `${s.amount}€/mo` : ""}`.trim()).join("\n"),
+        value:
+          "These amazing people have supported Zeppelin development by pledging on [Patreon](https://www.patreon.com/zeppelinbot):\n\n" +
+          formattedSupporters,
+        inline: false,
       });
     }
 
     // For the embed color, find the highest colored role the bot has - this is their color on the server as well
-    const botMember = await resolveMember(pluginData.client, pluginData.guild, pluginData.client.user.id);
-    let botRoles = botMember?.roles.map(r => (msg.channel as GuildChannel).guild.roles.get(r)!) || [];
+    const botMember = await resolveMember(pluginData.client, pluginData.guild, pluginData.client.user!.id);
+    let botRoles = botMember?.roles.cache.map(r => (msg.channel as GuildChannel).guild.roles.cache.get(r.id)!) || [];
     botRoles = botRoles.filter(r => !!r); // Drop any unknown roles
     botRoles = botRoles.filter(r => r.color); // Filter to those with a color
     botRoles.sort(sorter("position", "DESC")); // Sort by position (highest first)
     if (botRoles.length) {
-      aboutContent.embed.color = botRoles[0].color;
+      aboutContent.embeds![0].color = botRoles[0].color;
     }
 
     // Use the bot avatar as the embed image
-    if (pluginData.client.user.avatarURL) {
-      aboutContent.embed.thumbnail = { url: pluginData.client.user.avatarURL };
+    if (pluginData.client.user!.avatarURL()) {
+      aboutContent.embeds![0].thumbnail = { url: pluginData.client.user!.avatarURL()! };
     }
 
-    msg.channel.createMessage(aboutContent);
+    msg.channel.send(aboutContent);
   },
 });

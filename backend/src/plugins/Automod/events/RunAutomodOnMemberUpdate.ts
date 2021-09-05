@@ -1,25 +1,27 @@
 import { typedGuildEventListener } from "knub";
-import { AutomodContext, AutomodPluginType } from "../types";
-import { RecentActionType } from "../constants";
-import { runAutomod } from "../functions/runAutomod";
-import isEqual from "lodash.isequal";
 import diff from "lodash.difference";
+import isEqual from "lodash.isequal";
+import { runAutomod } from "../functions/runAutomod";
+import { AutomodContext, AutomodPluginType } from "../types";
 
 export const RunAutomodOnMemberUpdate = typedGuildEventListener<AutomodPluginType>()({
   event: "guildMemberUpdate",
-  listener({ pluginData, args: { member, oldMember } }) {
+  listener({ pluginData, args: { oldMember, newMember } }) {
     if (!oldMember) return;
 
-    if (isEqual(oldMember.roles, member.roles)) return;
+    const oldRoles = [...oldMember.roles.cache.keys()];
+    const newRoles = [...newMember.roles.cache.keys()];
 
-    const addedRoles = diff(member.roles, oldMember.roles);
-    const removedRoles = diff(oldMember.roles, member.roles);
+    if (isEqual(oldRoles, newRoles)) return;
+
+    const addedRoles = diff(newRoles, oldRoles);
+    const removedRoles = diff(oldRoles, newRoles);
 
     if (addedRoles.length || removedRoles.length) {
       const context: AutomodContext = {
         timestamp: Date.now(),
-        user: member.user,
-        member,
+        user: newMember.user,
+        member: newMember,
         rolesChanged: {
           added: addedRoles,
           removed: removedRoles,

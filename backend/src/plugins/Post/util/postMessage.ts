@@ -1,17 +1,17 @@
-import { GuildPluginData } from "knub";
-import { PostPluginType } from "../types";
-import { Attachment, Message, MessageContent, TextChannel } from "eris";
-import { downloadFile } from "../../../utils";
+import { Message, MessageAttachment, MessageOptions, NewsChannel, TextChannel, ThreadChannel } from "discord.js";
 import fs from "fs";
+import { GuildPluginData } from "knub";
+import { downloadFile } from "../../../utils";
+import { PostPluginType } from "../types";
 import { formatContent } from "./formatContent";
 
 const fsp = fs.promises;
 
 export async function postMessage(
   pluginData: GuildPluginData<PostPluginType>,
-  channel: TextChannel,
-  content: MessageContent,
-  attachments: Attachment[] = [],
+  channel: TextChannel | NewsChannel | ThreadChannel,
+  content: MessageOptions,
+  attachments: MessageAttachment[] = [],
   enableMentions: boolean = false,
 ): Promise<Message> {
   if (typeof content === "string") {
@@ -27,20 +27,19 @@ export async function postMessage(
   if (attachments.length) {
     downloadedAttachment = await downloadFile(attachments[0].url);
     file = {
-      name: attachments[0].filename,
+      name: attachments[0].name,
       file: await fsp.readFile(downloadedAttachment.path),
     };
+    content.files = [file.file];
   }
 
   if (enableMentions) {
     content.allowedMentions = {
-      everyone: true,
-      users: true,
-      roles: true,
+      parse: ["everyone", "roles", "users"],
     };
   }
 
-  const createdMsg = await channel.createMessage(content, file);
+  const createdMsg = await channel.send(content);
   pluginData.state.savedMessages.setPermanent(createdMsg.id);
 
   if (downloadedAttachment) {

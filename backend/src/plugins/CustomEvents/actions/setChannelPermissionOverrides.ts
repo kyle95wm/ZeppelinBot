@@ -1,7 +1,9 @@
-import { GuildPluginData } from "knub";
-import { CustomEventsPluginType, TCustomEvent } from "../types";
+import { Permissions, Snowflake, TextChannel, PermissionString } from "discord.js";
 import * as t from "io-ts";
+import { GuildPluginData } from "knub";
 import { ActionError } from "../ActionError";
+import { CustomEventsPluginType, TCustomEvent } from "../types";
+import { TemplateSafeValueContainer } from "../../../templateFormatter";
 
 export const SetChannelPermissionOverridesAction = t.type({
   type: t.literal("set_channel_permission_overrides"),
@@ -20,22 +22,33 @@ export type TSetChannelPermissionOverridesAction = t.TypeOf<typeof SetChannelPer
 export async function setChannelPermissionOverridesAction(
   pluginData: GuildPluginData<CustomEventsPluginType>,
   action: TSetChannelPermissionOverridesAction,
-  values: any,
+  values: TemplateSafeValueContainer,
   event: TCustomEvent,
   eventData: any,
 ) {
-  const channel = pluginData.guild.channels.get(action.channel);
+  const channel = pluginData.guild.channels.cache.get(action.channel as Snowflake) as TextChannel;
   if (!channel) {
     throw new ActionError(`Unknown channel: ${action.channel}`);
   }
 
   for (const override of action.overrides) {
-    await channel.editPermission(
-      override.id,
-      override.allow,
-      override.deny,
-      override.type,
+    const allow = new Permissions(BigInt(override.allow)).serialize();
+    const deny = new Permissions(BigInt(override.deny)).serialize();
+    const perms: Partial<Record<PermissionString, boolean | null>> = {};
+    for (const key in allow) {
+      if (allow[key]) {
+        perms[key] = true;
+      } else if (deny[key]) {
+        perms[key] = false;
+      }
+    }
+    channel.permissionOverwrites.create(override.id as Snowflake, perms);
+
+    /*
+    await channel.permissionOverwrites overwritePermissions(
+      [{ id: override.id, allow: BigInt(override.allow), deny: BigInt(override.deny), type: override.type }],
       `Custom event: ${event.name}`,
     );
+    */
   }
 }

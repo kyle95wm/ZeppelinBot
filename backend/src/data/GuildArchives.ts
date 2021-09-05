@@ -1,11 +1,17 @@
+import { Guild, Snowflake, User } from "discord.js";
 import moment from "moment-timezone";
-import { ArchiveEntry } from "./entities/ArchiveEntry";
+import { isDefaultSticker } from "src/utils/isDefaultSticker";
 import { getRepository, Repository } from "typeorm";
-import { BaseGuildRepository } from "./BaseGuildRepository";
+import { renderTemplate, TemplateSafeValueContainer } from "../templateFormatter";
 import { trimLines } from "../utils";
+import { BaseGuildRepository } from "./BaseGuildRepository";
+import { ArchiveEntry } from "./entities/ArchiveEntry";
 import { SavedMessage } from "./entities/SavedMessage";
-import { Guild } from "eris";
-import { renderTemplate } from "../templateFormatter";
+import {
+  channelToTemplateSafeChannel,
+  guildToTemplateSafeGuild,
+  userToTemplateSafeUser,
+} from "../utils/templateSafeObjects";
 
 const DEFAULT_EXPIRY_DAYS = 30;
 
@@ -13,7 +19,7 @@ const MESSAGE_ARCHIVE_HEADER_FORMAT = trimLines(`
   Server: {guild.name} ({guild.id})
 `);
 const MESSAGE_ARCHIVE_MESSAGE_FORMAT =
-  "[#{channel.name}] [{user.id}] [{timestamp}] {user.username}#{user.discriminator}: {content}{attachments}";
+  "[#{channel.name}] [{user.id}] [{timestamp}] {user.username}#{user.discriminator}: {content}{attachments}{stickers}";
 
 export class GuildArchives extends BaseGuildRepository {
   protected archives: Repository<ArchiveEntry>;
@@ -73,16 +79,26 @@ export class GuildArchives extends BaseGuildRepository {
   protected async renderLinesFromSavedMessages(savedMessages: SavedMessage[], guild: Guild) {
     const msgLines: string[] = [];
     for (const msg of savedMessages) {
-      const channel = guild.channels.get(msg.channel_id);
-      const user = { ...msg.data.author, id: msg.user_id };
+      const channel = guild.channels.cache.get(msg.channel_id as Snowflake);
+      const partialUser = new TemplateSafeValueContainer({ ...msg.data.author, id: msg.user_id });
 
-      const line = await renderTemplate(MESSAGE_ARCHIVE_MESSAGE_FORMAT, {
-        id: msg.id,
-        timestamp: moment.utc(msg.posted_at).format("YYYY-MM-DD HH:mm:ss"),
-        content: msg.data.content,
-        user,
-        channel,
-      });
+      const line = await renderTemplate(
+        MESSAGE_ARCHIVE_MESSAGE_FORMAT,
+        new TemplateSafeValueContainer({
+          id: msg.id,
+          timestamp: moment.utc(msg.posted_at).format("YYYY-MM-DD HH:mm:ss"),
+          content: msg.data.content,
+          attachments: msg.data.attachments?.map(att => {
+            return JSON.stringify({ name: att.name, url: att.url, type: att.contentType });
+          }),
+          stickers: msg.data.stickers?.map(sti => {
+            return JSON.stringify({ name: sti.name, id: sti.id, isDefault: isDefaultSticker(sti.id) });
+          }),
+          user: partialUser,
+          channel: channel ? channelToTemplateSafeChannel(channel) : null,
+        }),
+      );
+
       msgLines.push(line);
     }
     return msgLines;
@@ -93,7 +109,12 @@ export class GuildArchives extends BaseGuildRepository {
       expiresAt = moment.utc().add(DEFAULT_EXPIRY_DAYS, "days");
     }
 
-    const headerStr = await renderTemplate(MESSAGE_ARCHIVE_HEADER_FORMAT, { guild });
+    const headerStr = await renderTemplate(
+      MESSAGE_ARCHIVE_HEADER_FORMAT,
+      new TemplateSafeValueContainer({
+        guild: guildToTemplateSafeGuild(guild),
+      }),
+    );
     const msgLines = await this.renderLinesFromSavedMessages(savedMessages, guild);
     const messagesStr = msgLines.join("\n");
 

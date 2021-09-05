@@ -1,13 +1,17 @@
-import { logsEvt } from "../types";
-import { stripObjectToScalars } from "../../../utils";
 import { LogType } from "../../../data/LogType";
+import { differenceToString, getScalarDifference } from "../../../utils";
+import { channelToTemplateSafeChannel } from "../../../utils/templateSafeObjects";
+import { logsEvt } from "../types";
+import { logChannelCreate } from "../logFunctions/logChannelCreate";
+import { logChannelDelete } from "../logFunctions/logChannelDelete";
+import { logChannelUpdate } from "../logFunctions/logChannelUpdate";
 
 export const LogsChannelCreateEvt = logsEvt({
   event: "channelCreate",
 
   async listener(meta) {
-    meta.pluginData.state.guildLogs.log(LogType.CHANNEL_CREATE, {
-      channel: stripObjectToScalars(meta.args.channel),
+    logChannelCreate(meta.pluginData, {
+      channel: meta.args.channel,
     });
   },
 });
@@ -16,8 +20,31 @@ export const LogsChannelDeleteEvt = logsEvt({
   event: "channelDelete",
 
   async listener(meta) {
-    meta.pluginData.state.guildLogs.log(LogType.CHANNEL_DELETE, {
-      channel: stripObjectToScalars(meta.args.channel),
+    logChannelDelete(meta.pluginData, {
+      channel: meta.args.channel,
+    });
+  },
+});
+
+export const LogsChannelUpdateEvt = logsEvt({
+  event: "channelUpdate",
+
+  async listener(meta) {
+    if (meta.args.oldChannel?.partial) {
+      return;
+    }
+
+    const diff = getScalarDifference(meta.args.oldChannel, meta.args.newChannel);
+    const differenceString = differenceToString(diff);
+
+    if (differenceString.trim() === "") {
+      return;
+    }
+
+    logChannelUpdate(meta.pluginData, {
+      oldChannel: meta.args.oldChannel,
+      newChannel: meta.args.newChannel,
+      differenceString,
     });
   },
 });

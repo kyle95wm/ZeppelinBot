@@ -1,12 +1,13 @@
-import { getRepository, Repository } from "typeorm";
-import { BaseGuildRepository } from "./BaseGuildRepository";
-import { ISavedMessageData, SavedMessage } from "./entities/SavedMessage";
-import { QueuedEventEmitter } from "../QueuedEventEmitter";
-import { GuildChannel, Message, PossiblyUncachedTextableChannel } from "eris";
+import { GuildChannel, Message } from "discord.js";
 import moment from "moment-timezone";
-import { MINUTES, SECONDS } from "../utils";
+import { getRepository, Repository } from "typeorm";
+import { QueryDeepPartialEntity } from "typeorm/query-builder/QueryPartialEntity";
 import { isAPI } from "../globals";
+import { QueuedEventEmitter } from "../QueuedEventEmitter";
+import { MINUTES, SECONDS } from "../utils";
+import { BaseGuildRepository } from "./BaseGuildRepository";
 import { cleanupMessages } from "./cleanup/messages";
+import { ISavedMessageData, SavedMessage } from "./entities/SavedMessage";
 
 if (!isAPI()) {
   const CLEANUP_INTERVAL = 5 * MINUTES;
@@ -34,19 +35,100 @@ export class GuildSavedMessages extends BaseGuildRepository {
     this.toBePermanent = new Set();
   }
 
-  public msgToSavedMessageData(msg: Message<PossiblyUncachedTextableChannel>): ISavedMessageData {
+  public msgToSavedMessageData(msg: Message): ISavedMessageData {
     const data: ISavedMessageData = {
       author: {
         username: msg.author.username,
         discriminator: msg.author.discriminator,
       },
       content: msg.content,
-      timestamp: msg.timestamp,
+      timestamp: msg.createdTimestamp,
     };
 
-    if (msg.attachments.length) data.attachments = msg.attachments;
-    if (msg.embeds.length) data.embeds = msg.embeds;
-    if (msg.stickers?.length) data.stickers = msg.stickers;
+    if (msg.attachments.size) {
+      data.attachments = Array.from(msg.attachments.values()).map(att => ({
+        id: att.id,
+        contentType: att.contentType,
+        name: att.name,
+        proxyURL: att.proxyURL,
+        size: att.size,
+        spoiler: att.spoiler,
+        url: att.url,
+        width: att.width,
+      }));
+    }
+
+    if (msg.embeds.length) {
+      data.embeds = msg.embeds.map(embed => ({
+        title: embed.title,
+        description: embed.description,
+        url: embed.url,
+        timestamp: embed.timestamp,
+        color: embed.color,
+
+        fields: embed.fields.map(field => ({
+          name: field.name,
+          value: field.value,
+          inline: field.inline,
+        })),
+
+        author: embed.author
+          ? {
+              name: embed.author.name,
+              url: embed.author.url,
+              iconURL: embed.author.iconURL,
+              proxyIconURL: embed.author.proxyIconURL,
+            }
+          : undefined,
+
+        thumbnail: embed.thumbnail
+          ? {
+              url: embed.thumbnail.url,
+              proxyURL: embed.thumbnail.proxyURL,
+              height: embed.thumbnail.height,
+              width: embed.thumbnail.width,
+            }
+          : undefined,
+
+        image: embed.image
+          ? {
+              url: embed.image.url,
+              proxyURL: embed.image.proxyURL,
+              height: embed.image.height,
+              width: embed.image.width,
+            }
+          : undefined,
+
+        video: embed.video
+          ? {
+              url: embed.video.url,
+              proxyURL: embed.video.proxyURL,
+              height: embed.video.height,
+              width: embed.video.width,
+            }
+          : undefined,
+
+        footer: embed.footer
+          ? {
+              text: embed.footer.text,
+              iconURL: embed.footer.iconURL,
+              proxyIconURL: embed.footer.proxyIconURL,
+            }
+          : undefined,
+      }));
+    }
+
+    if (msg.stickers?.size) {
+      data.stickers = Array.from(msg.stickers.values()).map(sticker => ({
+        format: sticker.format,
+        guildId: sticker.guildId,
+        id: sticker.id,
+        name: sticker.name,
+        description: sticker.description,
+        available: sticker.available,
+        type: sticker.type,
+      }));
+    }
 
     return data;
   }
@@ -130,8 +212,12 @@ export class GuildSavedMessages extends BaseGuildRepository {
     try {
       await this.messages.insert(data);
     } catch (e) {
-      console.warn(e); // tslint:disable-line
-      return;
+      if (e?.code === "ER_DUP_ENTRY") {
+        console.trace(`Tried to insert duplicate message ID: ${data.id}`);
+        return;
+      }
+
+      throw e;
     }
 
     const inserted = await this.messages.findOne(data.id);
@@ -139,12 +225,14 @@ export class GuildSavedMessages extends BaseGuildRepository {
     this.events.emit(`create:${data.id}`, [inserted]);
   }
 
-  async createFromMsg(msg: Message<PossiblyUncachedTextableChannel>, overrides = {}) {
-    const existingSavedMsg = await this.find(msg.id);
-    if (existingSavedMsg) return;
+  async createFromMsg(msg: Message, overrides = {}) {
+    // FIXME: Hotfix
+    if (!msg.channel) {
+      return;
+    }
 
     const savedMessageData = this.msgToSavedMessageData(msg);
-    const postedAt = moment.utc(msg.timestamp, "x").format("YYYY-MM-DD HH:mm:ss");
+    const postedAt = moment.utc(msg.createdTimestamp, "x").format("YYYY-MM-DD HH:mm:ss");
 
     const data = {
       id: msg.id,
@@ -157,6 +245,12 @@ export class GuildSavedMessages extends BaseGuildRepository {
     };
 
     return this.create({ ...data, ...overrides });
+  }
+
+  async createFromMessages(messages: Message[], overrides = {}) {
+    for (const msg of messages) {
+      await this.createFromMsg(msg, overrides);
+    }
   }
 
   async markAsDeleted(id) {
@@ -211,10 +305,12 @@ export class GuildSavedMessages extends BaseGuildRepository {
 
     const newMessage = { ...oldMessage, data: newData };
 
+    // @ts-ignore
     await this.messages.update(
+      // FIXME?
       { id },
       {
-        data: newData,
+        data: newData as QueryDeepPartialEntity<ISavedMessageData>,
       },
     );
 
@@ -222,7 +318,7 @@ export class GuildSavedMessages extends BaseGuildRepository {
     this.events.emit(`update:${id}`, [newMessage, oldMessage]);
   }
 
-  async saveEditFromMsg(msg: Message<PossiblyUncachedTextableChannel>) {
+  async saveEditFromMsg(msg: Message) {
     const newData = this.msgToSavedMessageData(msg);
     return this.saveEdit(msg.id, newData);
   }

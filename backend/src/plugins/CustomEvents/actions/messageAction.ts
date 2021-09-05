@@ -1,9 +1,9 @@
-import { GuildPluginData } from "knub";
-import { CustomEventsPluginType } from "../types";
+import { Snowflake, TextChannel } from "discord.js";
 import * as t from "io-ts";
-import { renderTemplate } from "../../../templateFormatter";
+import { GuildPluginData } from "knub";
+import { renderTemplate, TemplateSafeValueContainer } from "../../../templateFormatter";
 import { ActionError } from "../ActionError";
-import { TextChannel } from "eris";
+import { CustomEventsPluginType } from "../types";
 
 export const MessageAction = t.type({
   type: t.literal("message"),
@@ -15,12 +15,12 @@ export type TMessageAction = t.TypeOf<typeof MessageAction>;
 export async function messageAction(
   pluginData: GuildPluginData<CustomEventsPluginType>,
   action: TMessageAction,
-  values: any,
+  values: TemplateSafeValueContainer,
 ) {
   const targetChannelId = await renderTemplate(action.channel, values, false);
-  const targetChannel = pluginData.guild.channels.get(targetChannelId);
+  const targetChannel = pluginData.guild.channels.cache.get(targetChannelId as Snowflake);
   if (!targetChannel) throw new ActionError("Unknown target channel");
   if (!(targetChannel instanceof TextChannel)) throw new ActionError("Target channel is not a text channel");
 
-  await targetChannel.createMessage({ content: action.content });
+  await targetChannel.send({ content: action.content });
 }

@@ -1,27 +1,22 @@
+import { GuildMember } from "discord.js";
 import { GuildPluginData } from "knub";
-import { IgnoredEventType, KickOptions, KickResult, ModActionsPluginType } from "../types";
-import { Member } from "eris";
-import {
-  createUserNotificationError,
-  notifyUser,
-  resolveUser,
-  stripObjectToScalars,
-  ucfirst,
-  UserNotificationResult,
-} from "../../../utils";
-import { renderTemplate } from "../../../templateFormatter";
-import { getDefaultContactMethods } from "./getDefaultContactMethods";
-import { LogType } from "../../../data/LogType";
-import { ignoreEvent } from "./ignoreEvent";
+import { userToTemplateSafeUser } from "../../../utils/templateSafeObjects";
 import { CaseTypes } from "../../../data/CaseTypes";
+import { LogType } from "../../../data/LogType";
+import { renderTemplate, TemplateSafeValueContainer } from "../../../templateFormatter";
+import { createUserNotificationError, notifyUser, resolveUser, ucfirst, UserNotificationResult } from "../../../utils";
 import { CasesPlugin } from "../../Cases/CasesPlugin";
+import { IgnoredEventType, KickOptions, KickResult, ModActionsPluginType } from "../types";
+import { getDefaultContactMethods } from "./getDefaultContactMethods";
+import { ignoreEvent } from "./ignoreEvent";
+import { LogsPlugin } from "../../Logs/LogsPlugin";
 
 /**
  * Kick the specified server member. Generates a case.
  */
 export async function kickMember(
   pluginData: GuildPluginData<ModActionsPluginType>,
-  member: Member,
+  member: GuildMember,
   reason?: string,
   kickOptions: KickOptions = {},
 ): Promise<KickResult> {
@@ -36,13 +31,16 @@ export async function kickMember(
 
     if (contactMethods.length) {
       if (config.kick_message) {
-        const kickMessage = await renderTemplate(config.kick_message, {
-          guildName: pluginData.guild.name,
-          reason,
-          moderator: kickOptions.caseArgs?.modId
-            ? stripObjectToScalars(await resolveUser(pluginData.client, kickOptions.caseArgs.modId))
-            : {},
-        });
+        const kickMessage = await renderTemplate(
+          config.kick_message,
+          new TemplateSafeValueContainer({
+            guildName: pluginData.guild.name,
+            reason,
+            moderator: kickOptions.caseArgs?.modId
+              ? userToTemplateSafeUser(await resolveUser(pluginData.client, kickOptions.caseArgs.modId))
+              : null,
+          }),
+        );
 
         notifyResult = await notifyUser(member.user, kickMessage, contactMethods);
       } else {
@@ -55,7 +53,7 @@ export async function kickMember(
   pluginData.state.serverLogs.ignoreLog(LogType.MEMBER_KICK, member.id);
   ignoreEvent(pluginData, IgnoredEventType.Kick, member.id);
   try {
-    await member.kick(reason != null ? encodeURIComponent(reason) : undefined);
+    await member.kick(reason ?? undefined);
   } catch (e) {
     return {
       status: "failed",
@@ -63,7 +61,7 @@ export async function kickMember(
     };
   }
 
-  const modId = kickOptions.caseArgs?.modId || pluginData.client.user.id;
+  const modId = kickOptions.caseArgs?.modId || pluginData.client.user!.id;
 
   // Create a case for this action
   const casesPlugin = pluginData.getPlugin(CasesPlugin);
@@ -78,11 +76,11 @@ export async function kickMember(
 
   // Log the action
   const mod = await resolveUser(pluginData.client, modId);
-  pluginData.state.serverLogs.log(LogType.MEMBER_KICK, {
-    mod: stripObjectToScalars(mod),
-    user: stripObjectToScalars(member.user),
+  pluginData.getPlugin(LogsPlugin).logMemberKick({
+    mod,
+    user: member.user,
     caseNumber: createdCase.case_number,
-    reason,
+    reason: reason ?? "",
   });
 
   pluginData.state.events.emit("kick", member.id, reason, kickOptions.isAutomodAction);

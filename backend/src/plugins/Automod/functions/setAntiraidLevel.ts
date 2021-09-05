@@ -1,10 +1,10 @@
-import { User } from "eris";
+import { User } from "discord.js";
 import { GuildPluginData } from "knub";
-import { AutomodPluginType } from "../types";
-import { LogsPlugin } from "../../Logs/LogsPlugin";
+import { userToTemplateSafeUser } from "../../../utils/templateSafeObjects";
 import { LogType } from "../../../data/LogType";
-import { stripObjectToScalars } from "../../../utils";
+import { LogsPlugin } from "../../Logs/LogsPlugin";
 import { runAutomodOnAntiraidLevel } from "../events/runAutomodOnAntiraidLevel";
+import { AutomodPluginType } from "../types";
 
 export async function setAntiraidLevel(
   pluginData: GuildPluginData<AutomodPluginType>,
@@ -19,12 +19,12 @@ export async function setAntiraidLevel(
   const logs = pluginData.getPlugin(LogsPlugin);
 
   if (user) {
-    logs.log(LogType.SET_ANTIRAID_USER, {
+    logs.logSetAntiraidUser({
       level: newLevel ?? "off",
-      user: stripObjectToScalars(user),
+      user,
     });
   } else {
-    logs.log(LogType.SET_ANTIRAID_AUTO, {
+    logs.logSetAntiraidAuto({
       level: newLevel ?? "off",
     });
   }
