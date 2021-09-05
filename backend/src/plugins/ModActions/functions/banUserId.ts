@@ -1,5 +1,11 @@
+import { DiscordAPIError, Snowflake, User } from "discord.js";
+import humanizeDuration from "humanize-duration";
 import { GuildPluginData } from "knub";
-import { BanOptions, BanResult, IgnoredEventType, ModActionsPluginType } from "../types";
+import { userToTemplateSafeUser } from "../../../utils/templateSafeObjects";
+import { CaseTypes } from "../../../data/CaseTypes";
+import { LogType } from "../../../data/LogType";
+import { logger } from "../../../logger";
+import { renderTemplate, TemplateSafeValueContainer } from "../../../templateFormatter";
 import {
   createUserNotificationError,
   notifyUser,
@@ -8,15 +14,11 @@ import {
   ucfirst,
   UserNotificationResult,
 } from "../../../utils";
-import { DiscordRESTError, User } from "eris";
-import { renderTemplate } from "../../../templateFormatter";
-import { getDefaultContactMethods } from "./getDefaultContactMethods";
-import { LogType } from "../../../data/LogType";
-import { ignoreEvent } from "./ignoreEvent";
 import { CasesPlugin } from "../../Cases/CasesPlugin";
-import { CaseTypes } from "../../../data/CaseTypes";
-import { logger } from "../../../logger";
-import humanizeDuration from "humanize-duration";
+import { BanOptions, BanResult, IgnoredEventType, ModActionsPluginType } from "../types";
+import { getDefaultContactMethods } from "./getDefaultContactMethods";
+import { ignoreEvent } from "./ignoreEvent";
+import { LogsPlugin } from "../../Logs/LogsPlugin";
 
 /**
  * Ban the specified user id, whether or not they're actually on the server at the time. Generates a case.
@@ -46,24 +48,30 @@ export async function banUserId(
 
     if (contactMethods.length) {
       if (!banTime && config.ban_message) {
-        const banMessage = await renderTemplate(config.ban_message, {
-          guildName: pluginData.guild.name,
-          reason,
-          moderator: banOptions.caseArgs?.modId
-            ? stripObjectToScalars(await resolveUser(pluginData.client, banOptions.caseArgs.modId))
-            : {},
-        });
+        const banMessage = await renderTemplate(
+          config.ban_message,
+          new TemplateSafeValueContainer({
+            guildName: pluginData.guild.name,
+            reason,
+            moderator: banOptions.caseArgs?.modId
+              ? userToTemplateSafeUser(await resolveUser(pluginData.client, banOptions.caseArgs.modId))
+              : null,
+          }),
+        );
 
         notifyResult = await notifyUser(user, banMessage, contactMethods);
       } else if (banTime && config.tempban_message) {
-        const banMessage = await renderTemplate(config.tempban_message, {
-          guildName: pluginData.guild.name,
-          reason,
-          moderator: banOptions.caseArgs?.modId
-            ? stripObjectToScalars(await resolveUser(pluginData.client, banOptions.caseArgs.modId))
-            : {},
-          banTime: humanizeDuration(banTime),
-        });
+        const banMessage = await renderTemplate(
+          config.tempban_message,
+          new TemplateSafeValueContainer({
+            guildName: pluginData.guild.name,
+            reason,
+            moderator: banOptions.caseArgs?.modId
+              ? userToTemplateSafeUser(await resolveUser(pluginData.client, banOptions.caseArgs.modId))
+              : null,
+            banTime: humanizeDuration(banTime),
+          }),
+        );
 
         notifyResult = await notifyUser(user, banMessage, contactMethods);
       } else {
@@ -77,14 +85,13 @@ export async function banUserId(
   ignoreEvent(pluginData, IgnoredEventType.Ban, userId);
   try {
     const deleteMessageDays = Math.min(30, Math.max(0, banOptions.deleteMessageDays ?? 1));
-    await pluginData.guild.banMember(
-      userId,
-      deleteMessageDays,
-      reason != null ? encodeURIComponent(reason) : undefined,
-    );
+    await pluginData.guild.bans.create(userId as Snowflake, {
+      days: deleteMessageDays,
+      reason: reason ?? undefined,
+    });
   } catch (e) {
     let errorMessage;
-    if (e instanceof DiscordRESTError) {
+    if (e instanceof DiscordAPIError) {
       errorMessage = `API error ${e.code}: ${e.message}`;
     } else {
       logger.warn(`Error applying ban to ${userId}: ${e}`);
@@ -99,7 +106,7 @@ export async function banUserId(
 
   const existingTempban = await pluginData.state.tempbans.findExistingTempbanForUserId(user.id);
   if (banTime && banTime > 0) {
-    const selfId = pluginData.client.user.id;
+    const selfId = pluginData.client.user!.id;
     if (existingTempban) {
       pluginData.state.tempbans.updateExpiryTime(user.id, banTime, banOptions.modId ?? selfId);
     } else {
@@ -108,7 +115,7 @@ export async function banUserId(
   }
 
   // Create a case for this action
-  const modId = banOptions.caseArgs?.modId || pluginData.client.user.id;
+  const modId = banOptions.caseArgs?.modId || pluginData.client.user!.id;
   const casesPlugin = pluginData.getPlugin(CasesPlugin);
 
   const noteDetails: string[] = [];
@@ -128,14 +135,23 @@ export async function banUserId(
 
   // Log the action
   const mod = await resolveUser(pluginData.client, modId);
-  const logtype = banTime ? LogType.MEMBER_TIMED_BAN : LogType.MEMBER_BAN;
-  pluginData.state.serverLogs.log(logtype, {
-    mod: stripObjectToScalars(mod),
-    user: stripObjectToScalars(user),
-    caseNumber: createdCase.case_number,
-    reason,
-    banTime: banTime ? humanizeDuration(banTime) : null,
-  });
+
+  if (banTime) {
+    pluginData.getPlugin(LogsPlugin).logMemberTimedBan({
+      mod,
+      user,
+      caseNumber: createdCase.case_number,
+      reason: reason ?? "",
+      banTime: humanizeDuration(banTime),
+    });
+  } else {
+    pluginData.getPlugin(LogsPlugin).logMemberBan({
+      mod,
+      user,
+      caseNumber: createdCase.case_number,
+      reason: reason ?? "",
+    });
+  }
 
   pluginData.state.events.emit("ban", user.id, reason, banOptions.isAutomodAction);
 

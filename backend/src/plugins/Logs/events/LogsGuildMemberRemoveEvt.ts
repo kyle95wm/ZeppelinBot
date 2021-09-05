@@ -1,13 +1,14 @@
-import { logsEvt } from "../types";
-import { stripObjectToScalars } from "../../../utils";
 import { LogType } from "../../../data/LogType";
+import { memberToTemplateSafeMember } from "../../../utils/templateSafeObjects";
+import { logsEvt } from "../types";
+import { logMemberLeave } from "../logFunctions/logMemberLeave";
 
 export const LogsGuildMemberRemoveEvt = logsEvt({
   event: "guildMemberRemove",
 
   async listener(meta) {
-    meta.pluginData.state.guildLogs.log(LogType.MEMBER_LEAVE, {
-      member: stripObjectToScalars(meta.args.member, ["user", "roles"]),
+    logMemberLeave(meta.pluginData, {
+      member: meta.args.member,
     });
   },
 });

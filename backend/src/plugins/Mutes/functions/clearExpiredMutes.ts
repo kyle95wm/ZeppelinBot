@@ -1,14 +1,16 @@
+import { Snowflake } from "discord.js";
 import { GuildPluginData } from "knub";
-import { MutesPluginType } from "../types";
+import { memberToTemplateSafeMember } from "../../../utils/templateSafeObjects";
 import { LogType } from "../../../data/LogType";
-import { resolveMember, stripObjectToScalars, UnknownUser } from "../../../utils";
-import { MemberOptions } from "eris";
+import { resolveMember, UnknownUser, verboseUserMention } from "../../../utils";
 import { memberRolesLock } from "../../../utils/lockNameHelpers";
+import { MutesPluginType } from "../types";
+import { LogsPlugin } from "../../Logs/LogsPlugin";
 
 export async function clearExpiredMutes(pluginData: GuildPluginData<MutesPluginType>) {
   const expiredMutes = await pluginData.state.mutes.getExpiredMutes();
   for (const mute of expiredMutes) {
-    const member = await resolveMember(pluginData.client, pluginData.guild, mute.user_id);
+    const member = await resolveMember(pluginData.client, pluginData.guild, mute.user_id, true);
 
     if (member) {
       try {
@@ -16,34 +18,31 @@ export async function clearExpiredMutes(pluginData: GuildPluginData<MutesPluginT
 
         const muteRole = pluginData.config.get().mute_role;
         if (muteRole) {
-          await member.removeRole(muteRole);
-          member.roles = member.roles.filter(r => r !== muteRole);
+          await member.roles.remove(muteRole);
         }
         if (mute.roles_to_restore) {
-          const memberOptions: MemberOptions = {};
-          const guildRoles = pluginData.guild.roles;
-          memberOptions.roles = Array.from(
-            new Set([...mute.roles_to_restore, ...member.roles.filter(x => x !== muteRole && guildRoles.has(x))]),
-          );
-          await member.edit(memberOptions);
-          member.roles = memberOptions.roles;
+          const guildRoles = pluginData.guild.roles.cache;
+          const newRoles = [...member.roles.cache.keys()].filter(roleId => roleId !== muteRole);
+          for (const toRestore of mute.roles_to_restore) {
+            if (guildRoles.has(toRestore) && toRestore !== muteRole && !newRoles.includes(toRestore)) {
+              newRoles.push(toRestore);
+            }
+          }
+          await member.roles.set(newRoles);
         }
 
         lock.unlock();
       } catch {
-        pluginData.state.serverLogs.log(LogType.BOT_ALERT, {
-          body: `Failed to remove mute role from {userMention(member)}`,
-          member: stripObjectToScalars(member),
+        pluginData.getPlugin(LogsPlugin).logBotAlert({
+          body: `Failed to remove mute role from ${verboseUserMention(member.user)}`,
         });
       }
     }
 
     await pluginData.state.mutes.clear(mute.user_id);
 
-    pluginData.state.serverLogs.log(LogType.MEMBER_MUTE_EXPIRED, {
-      member: member
-        ? stripObjectToScalars(member, ["user", "roles"])
-        : { id: mute.user_id, user: new UnknownUser({ id: mute.user_id }) },
+    pluginData.getPlugin(LogsPlugin).logMemberMuteExpired({
+      member: member || new UnknownUser({ id: mute.user_id }),
     });
 
     pluginData.state.events.emit("unmute", mute.user_id);

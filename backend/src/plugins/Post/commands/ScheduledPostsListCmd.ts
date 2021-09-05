@@ -1,15 +1,9 @@
-import { postCmd } from "../types";
-import {
-  trimLines,
-  sorter,
-  disableCodeBlocks,
-  deactivateMentions,
-  createChunkedMessage,
-  DBDateFormat,
-} from "../../../utils";
+import { Util } from "discord.js";
 import humanizeDuration from "humanize-duration";
 import moment from "moment-timezone";
+import { createChunkedMessage, DBDateFormat, deactivateMentions, sorter, trimLines } from "../../../utils";
 import { TimeAndDatePlugin } from "../../TimeAndDate/TimeAndDatePlugin";
+import { postCmd } from "../types";
 
 const SCHEDULED_POST_PREVIEW_TEXT_LENGTH = 50;
 
@@ -20,7 +14,7 @@ export const ScheduledPostsListCmd = postCmd({
   async run({ message: msg, pluginData }) {
     const scheduledPosts = await pluginData.state.scheduledPosts.all();
     if (scheduledPosts.length === 0) {
-      msg.channel.createMessage("No scheduled posts");
+      msg.channel.send("No scheduled posts");
       return;
     }
 
@@ -28,12 +22,11 @@ export const ScheduledPostsListCmd = postCmd({
 
     let i = 1;
     const postLines = scheduledPosts.map(p => {
-      let previewText =
-        p.content.content || (p.content.embed && (p.content.embed.description || p.content.embed.title)) || "";
+      let previewText = p.content.content || p.content.embeds?.[0]?.description || p.content.embeds?.[0]?.title || "";
 
       const isTruncated = previewText.length > SCHEDULED_POST_PREVIEW_TEXT_LENGTH;
 
-      previewText = disableCodeBlocks(deactivateMentions(previewText))
+      previewText = Util.escapeCodeBlock(deactivateMentions(previewText))
         .replace(/\s+/g, " ")
         .slice(0, SCHEDULED_POST_PREVIEW_TEXT_LENGTH);
 
@@ -43,7 +36,7 @@ export const ScheduledPostsListCmd = postCmd({
         .format(timeAndDate.getDateFormat("pretty_datetime"));
       const parts = [`\`#${i++}\` \`[${prettyPostAt}]\` ${previewText}${isTruncated ? "..." : ""}`];
       if (p.attachments.length) parts.push("*(with attachment)*");
-      if (p.content.embed) parts.push("*(embed)*");
+      if (p.content.embeds?.length) parts.push("*(embed)*");
       if (p.repeat_until) {
         parts.push(`*(repeated every ${humanizeDuration(p.repeat_interval)} until ${p.repeat_until})*`);
       }
@@ -61,7 +54,7 @@ export const ScheduledPostsListCmd = postCmd({
 
     const finalMessage = trimLines(`
       ${postLines.join("\n")}
-      
+
       Use \`scheduled_posts <num>\` to view a scheduled post in full
       Use \`scheduled_posts delete <num>\` to delete a scheduled post
     `);

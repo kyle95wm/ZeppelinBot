@@ -1,10 +1,11 @@
-import { Message } from "eris";
+import { Message, TextChannel } from "discord.js";
 import { CaseTypes } from "../../../data/CaseTypes";
 import { Case } from "../../../data/entities/Case";
 import { LogType } from "../../../data/LogType";
 import { CasesPlugin } from "../../../plugins/Cases/CasesPlugin";
 import { sendErrorMessage, sendSuccessMessage } from "../../../pluginUtils";
 import { formatReasonWithAttachments } from "./formatReasonWithAttachments";
+import { LogsPlugin } from "../../Logs/LogsPlugin";
 
 export async function updateCase(pluginData, msg: Message, args) {
   let theCase: Case | undefined;
@@ -15,16 +16,16 @@ export async function updateCase(pluginData, msg: Message, args) {
   }
 
   if (!theCase) {
-    sendErrorMessage(pluginData, msg.channel, "Case not found");
+    sendErrorMessage(pluginData, msg.channel as TextChannel, "Case not found");
     return;
   }
 
-  if (!args.note && msg.attachments.length === 0) {
-    sendErrorMessage(pluginData, msg.channel, "Text or attachment required");
+  if (!args.note && msg.attachments.size === 0) {
+    sendErrorMessage(pluginData, msg.channel as TextChannel, "Text or attachment required");
     return;
   }
 
-  const note = formatReasonWithAttachments(args.note, msg.attachments);
+  const note = formatReasonWithAttachments(args.note, [...msg.attachments.values()]);
 
   const casesPlugin = pluginData.getPlugin(CasesPlugin);
   await casesPlugin.createCaseNote({
@@ -33,12 +34,12 @@ export async function updateCase(pluginData, msg: Message, args) {
     body: note,
   });
 
-  pluginData.state.serverLogs.log(LogType.CASE_UPDATE, {
+  pluginData.getPlugin(LogsPlugin).logCaseUpdate({
     mod: msg.author,
     caseNumber: theCase.case_number,
     caseType: CaseTypes[theCase.type],
     note,
   });
 
-  sendSuccessMessage(pluginData, msg.channel, `Case \`#${theCase.case_number}\` updated`);
+  sendSuccessMessage(pluginData, msg.channel as TextChannel, `Case \`#${theCase.case_number}\` updated`);
 }

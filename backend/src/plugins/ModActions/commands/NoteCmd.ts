@@ -1,12 +1,13 @@
-import { modActionsCmd } from "../types";
+import { userToTemplateSafeUser } from "../../../utils/templateSafeObjects";
 import { commandTypeHelpers as ct } from "../../../commandTypes";
-import { Case } from "../../../data/entities/Case";
-import { sendErrorMessage, sendSuccessMessage } from "../../../pluginUtils";
-import { formatReasonWithAttachments } from "../functions/formatReasonWithAttachments";
-import { CasesPlugin } from "../../Cases/CasesPlugin";
-import { LogType } from "../../../data/LogType";
 import { CaseTypes } from "../../../data/CaseTypes";
-import { resolveUser, stripObjectToScalars } from "../../../utils";
+import { LogType } from "../../../data/LogType";
+import { sendErrorMessage, sendSuccessMessage } from "../../../pluginUtils";
+import { resolveUser } from "../../../utils";
+import { CasesPlugin } from "../../Cases/CasesPlugin";
+import { formatReasonWithAttachments } from "../functions/formatReasonWithAttachments";
+import { modActionsCmd } from "../types";
+import { LogsPlugin } from "../../Logs/LogsPlugin";
 
 export const NoteCmd = modActionsCmd({
   trigger: "note",
@@ -25,13 +26,13 @@ export const NoteCmd = modActionsCmd({
       return;
     }
 
-    if (!args.note && msg.attachments.length === 0) {
+    if (!args.note && msg.attachments.size === 0) {
       sendErrorMessage(pluginData, msg.channel, "Text or attachment required");
       return;
     }
 
-    const userName = `${user.username}#${user.discriminator}`;
-    const reason = formatReasonWithAttachments(args.note, msg.attachments);
+    const userName = user.tag;
+    const reason = formatReasonWithAttachments(args.note, [...msg.attachments.values()]);
 
     const casesPlugin = pluginData.getPlugin(CasesPlugin);
     const createdCase = await casesPlugin.createCase({
@@ -41,9 +42,9 @@ export const NoteCmd = modActionsCmd({
       reason,
     });
 
-    pluginData.state.serverLogs.log(LogType.MEMBER_NOTE, {
-      mod: stripObjectToScalars(msg.author),
-      user: stripObjectToScalars(user, ["user", "roles"]),
+    pluginData.getPlugin(LogsPlugin).logMemberNote({
+      mod: msg.author,
+      user,
       caseNumber: createdCase.case_number,
       reason,
     });

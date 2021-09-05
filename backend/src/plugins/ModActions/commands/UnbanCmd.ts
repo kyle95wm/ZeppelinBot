@@ -1,12 +1,15 @@
-import { modActionsCmd, IgnoredEventType } from "../types";
+import { Snowflake } from "discord.js";
+import { userToTemplateSafeUser } from "../../../utils/templateSafeObjects";
 import { commandTypeHelpers as ct } from "../../../commandTypes";
-import { sendErrorMessage, hasPermission, sendSuccessMessage } from "../../../pluginUtils";
-import { resolveUser, stripObjectToScalars } from "../../../utils";
-import { formatReasonWithAttachments } from "../functions/formatReasonWithAttachments";
-import { LogType } from "../../../data/LogType";
-import { ignoreEvent } from "../functions/ignoreEvent";
 import { CaseTypes } from "../../../data/CaseTypes";
+import { LogType } from "../../../data/LogType";
 import { CasesPlugin } from "../../../plugins/Cases/CasesPlugin";
+import { hasPermission, sendErrorMessage, sendSuccessMessage } from "../../../pluginUtils";
+import { resolveUser } from "../../../utils";
+import { formatReasonWithAttachments } from "../functions/formatReasonWithAttachments";
+import { ignoreEvent } from "../functions/ignoreEvent";
+import { IgnoredEventType, modActionsCmd } from "../types";
+import { LogsPlugin } from "../../Logs/LogsPlugin";
 
 const opts = {
   mod: ct.member({ option: true }),
@@ -45,11 +48,11 @@ export const UnbanCmd = modActionsCmd({
     }
 
     pluginData.state.serverLogs.ignoreLog(LogType.MEMBER_UNBAN, user.id);
-    const reason = formatReasonWithAttachments(args.reason, msg.attachments);
+    const reason = formatReasonWithAttachments(args.reason, [...msg.attachments.values()]);
 
     try {
       ignoreEvent(pluginData, IgnoredEventType.Unban, user.id);
-      await pluginData.guild.unbanMember(user.id, reason != null ? encodeURIComponent(reason) : undefined);
+      await pluginData.guild.bans.remove(user.id as Snowflake, reason ?? undefined);
     } catch {
       sendErrorMessage(pluginData, msg.channel, "Failed to unban member; are you sure they're banned?");
       return;
@@ -71,11 +74,11 @@ export const UnbanCmd = modActionsCmd({
     sendSuccessMessage(pluginData, msg.channel, `Member unbanned (Case #${createdCase.case_number})`);
 
     // Log the action
-    pluginData.state.serverLogs.log(LogType.MEMBER_UNBAN, {
-      mod: stripObjectToScalars(mod.user),
+    pluginData.getPlugin(LogsPlugin).logMemberUnban({
+      mod: mod.user,
       userId: user.id,
       caseNumber: createdCase.case_number,
-      reason,
+      reason: reason ?? "",
     });
 
     pluginData.state.events.emit("unban", user.id);

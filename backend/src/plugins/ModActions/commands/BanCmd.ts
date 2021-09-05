@@ -1,17 +1,20 @@
-import { modActionsCmd, IgnoredEventType } from "../types";
-import { commandTypeHelpers as ct } from "../../../commandTypes";
-import { canActOn, sendErrorMessage, hasPermission, sendSuccessMessage } from "../../../pluginUtils";
-import { resolveUser, resolveMember, stripObjectToScalars, noop } from "../../../utils";
-import { isBanned } from "../functions/isBanned";
-import { readContactMethodsFromArgs } from "../functions/readContactMethodsFromArgs";
-import { formatReasonWithAttachments } from "../functions/formatReasonWithAttachments";
-import { banUserId } from "../functions/banUserId";
-import { getMemberLevel, waitForReaction } from "knub/dist/helpers";
 import humanizeDuration from "humanize-duration";
-import { CasesPlugin } from "../../../plugins/Cases/CasesPlugin";
+import { getMemberLevel } from "knub/dist/helpers";
+import { userToTemplateSafeUser } from "../../../utils/templateSafeObjects";
+import { commandTypeHelpers as ct } from "../../../commandTypes";
 import { CaseTypes } from "../../../data/CaseTypes";
 import { LogType } from "../../../data/LogType";
+import { CasesPlugin } from "../../../plugins/Cases/CasesPlugin";
+import { canActOn, hasPermission, sendErrorMessage, sendSuccessMessage } from "../../../pluginUtils";
+import { resolveMember, resolveUser } from "../../../utils";
 import { banLock } from "../../../utils/lockNameHelpers";
+import { waitForButtonConfirm } from "../../../utils/waitForInteraction";
+import { banUserId } from "../functions/banUserId";
+import { formatReasonWithAttachments } from "../functions/formatReasonWithAttachments";
+import { isBanned } from "../functions/isBanned";
+import { readContactMethodsFromArgs } from "../functions/readContactMethodsFromArgs";
+import { modActionsCmd } from "../types";
+import { LogsPlugin } from "../../Logs/LogsPlugin";
 
 const opts = {
   mod: ct.member({ option: true }),
@@ -49,7 +52,7 @@ export const BanCmd = modActionsCmd({
     }
     const time = args["time"] ? args["time"] : null;
 
-    const reason = formatReasonWithAttachments(args.reason, msg.attachments);
+    const reason = formatReasonWithAttachments(args.reason, [...msg.attachments.values()]);
     const memberToBan = await resolveMember(pluginData.client, pluginData.guild, user.id);
     // The moderator who did the action is the message author or, if used, the specified -mod
     let mod = msg.member;
@@ -76,11 +79,12 @@ export const BanCmd = modActionsCmd({
         }
 
         // Ask the mod if we should update the existing ban
-        const alreadyBannedMsg = await msg.channel.createMessage("User is already banned, update ban?");
-        const reply = await waitForReaction(pluginData.client, alreadyBannedMsg, ["✅", "❌"], msg.author.id);
-
-        alreadyBannedMsg.delete().catch(noop);
-        if (!reply || reply.name === "❌") {
+        const reply = await waitForButtonConfirm(
+          msg.channel,
+          { content: "Failed to message the user. Log the warning anyway?" },
+          { confirmText: "Yes", cancelText: "No", restrictToId: msg.member.id },
+        );
+        if (!reply) {
           sendErrorMessage(pluginData, msg.channel, "User already banned, update cancelled by moderator");
           lock.unlock();
           return;
@@ -105,14 +109,22 @@ export const BanCmd = modActionsCmd({
             reason,
             noteDetails: [`Ban updated to ${time ? humanizeDuration(time) : "indefinite"}`],
           });
-          const logtype = time ? LogType.MEMBER_TIMED_BAN : LogType.MEMBER_BAN;
-          pluginData.state.serverLogs.log(logtype, {
-            mod: stripObjectToScalars(mod.user),
-            user: stripObjectToScalars(user),
-            caseNumber: createdCase.case_number,
-            reason,
-            banTime: time ? humanizeDuration(time) : null,
-          });
+          if (time) {
+            pluginData.getPlugin(LogsPlugin).logMemberTimedBan({
+              mod: mod.user,
+              user,
+              caseNumber: createdCase.case_number,
+              reason,
+              banTime: humanizeDuration(time),
+            });
+          } else {
+            pluginData.getPlugin(LogsPlugin).logMemberBan({
+              mod: mod.user,
+              user,
+              caseNumber: createdCase.case_number,
+              reason,
+            });
+          }
 
           sendSuccessMessage(
             pluginData,
@@ -124,11 +136,12 @@ export const BanCmd = modActionsCmd({
         }
       } else {
         // Ask the mod if we should upgrade to a forceban as the user is not on the server
-        const notOnServerMsg = await msg.channel.createMessage("User not found on the server, forceban instead?");
-        const reply = await waitForReaction(pluginData.client, notOnServerMsg, ["✅", "❌"], msg.author.id);
-
-        notOnServerMsg.delete().catch(noop);
-        if (!reply || reply.name === "❌") {
+        const reply = await waitForButtonConfirm(
+          msg.channel,
+          { content: "User not on server, forceban instead?" },
+          { confirmText: "Yes", cancelText: "No", restrictToId: msg.member.id },
+        );
+        if (!reply) {
           sendErrorMessage(pluginData, msg.channel, "User not on server, ban cancelled by moderator");
           lock.unlock();
           return;
@@ -192,7 +205,7 @@ export const BanCmd = modActionsCmd({
     // Confirm the action to the moderator
     let response = "";
     if (!forceban) {
-      response = `Banned **${user.username}#${user.discriminator}** ${forTime}(Case #${banResult.case.case_number})`;
+      response = `Banned **${user.tag}** ${forTime}(Case #${banResult.case.case_number})`;
       if (banResult.notifyResult.text) response += ` (${banResult.notifyResult.text})`;
     } else {
       response = `Member forcebanned ${forTime}(Case #${banResult.case.case_number})`;

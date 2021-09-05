@@ -1,6 +1,7 @@
+import { Constants, MessageEmbed } from "discord.js";
+import { GuildPluginData } from "knub";
 import { SavedMessage } from "../../../data/entities/SavedMessage";
 import { resolveMember } from "../../../utils";
-import { GuildPluginData } from "knub";
 import { AutomodPluginType } from "../types";
 
 type TextTriggerWithMultipleMatchTypes = {
@@ -31,28 +32,30 @@ export async function* matchMultipleTextTypesOnMessage(
     yield ["message", msg.data.content];
   }
 
-  if (trigger.match_embeds && msg.data.embeds && msg.data.embeds.length) {
-    const copiedEmbed = JSON.parse(JSON.stringify(msg.data.embeds[0]));
-    if (copiedEmbed.type === "video") {
+  if (trigger.match_embeds && msg.data.embeds?.length) {
+    const copiedEmbed: MessageEmbed = JSON.parse(JSON.stringify(msg.data.embeds[0]));
+    if (copiedEmbed.video) {
       copiedEmbed.description = ""; // The description is not rendered, hence it doesn't need to be matched
     }
     yield ["embed", JSON.stringify(copiedEmbed)];
   }
 
   if (trigger.match_visible_names) {
-    yield ["visiblename", member.nick || msg.data.author.username];
+    yield ["visiblename", member.nickname || msg.data.author.username];
   }
 
   if (trigger.match_usernames) {
     yield ["username", `${msg.data.author.username}#${msg.data.author.discriminator}`];
   }
 
-  if (trigger.match_nicknames && member.nick) {
-    yield ["nickname", member.nick];
+  if (trigger.match_nicknames && member.nickname) {
+    yield ["nickname", member.nickname];
   }
 
-  // type 4 = custom status
-  if (trigger.match_custom_status && member.game?.type === 4 && member.game?.state) {
-    yield ["customstatus", member.game.state];
+  for (const activity of member.presence?.activities ?? []) {
+    if (activity.type === Constants.ActivityTypes[4]) {
+      yield ["customstatus", `${activity.emoji} ${activity.name}`];
+      break;
+    }
   }
 }

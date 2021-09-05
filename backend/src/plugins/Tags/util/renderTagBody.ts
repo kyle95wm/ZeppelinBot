@@ -1,23 +1,23 @@
-import { renderTemplate } from "../../../templateFormatter";
 import { GuildPluginData } from "knub";
-import { Tag, TagsPluginType } from "../types";
-import { renderRecursively, StrictMessageContent } from "../../../utils";
-import * as t from "io-ts";
-import { findTagByName } from "./findTagByName";
 import { ExtendedMatchParams } from "knub/dist/config/PluginConfigManager";
+import { renderTemplate, TemplateSafeValue, TemplateSafeValueContainer } from "../../../templateFormatter";
+import { renderRecursively, StrictMessageContent } from "../../../utils";
+import { TagsPluginType, TTag } from "../types";
+import { findTagByName } from "./findTagByName";
+
+const MAX_TAG_FN_CALLS = 25;
 
 export async function renderTagBody(
   pluginData: GuildPluginData<TagsPluginType>,
-  body: t.TypeOf<typeof Tag>,
-  args: any[] = [],
+  body: TTag,
+  args: TemplateSafeValue[] = [],
   extraData = {},
   subTagPermissionMatchParams?: ExtendedMatchParams,
+  tagFnCallsObj = { calls: 0 },
 ): Promise<StrictMessageContent> {
   const dynamicVars = {};
-  const maxTagFnCalls = 25;
-  let tagFnCalls = 0;
 
-  const data = {
+  const data = new TemplateSafeValueContainer({
     args,
     ...extraData,
     ...pluginData.state.tagFunctions,
@@ -34,7 +34,7 @@ export async function renderTagBody(
       return dynamicVars[name] == null ? "" : dynamicVars[name];
     },
     tag: async (name, ...subTagArgs) => {
-      if (tagFnCalls++ > maxTagFnCalls) return "\\_recursion\\_";
+      if (++tagFnCallsObj.calls > MAX_TAG_FN_CALLS) return "";
       if (typeof name !== "string") return "";
       if (name === "") return "";
 
@@ -48,10 +48,17 @@ export async function renderTagBody(
         return "<embed>";
       }
 
-      const rendered = await renderTagBody(pluginData, subTagBody, subTagArgs, subTagPermissionMatchParams);
+      const rendered = await renderTagBody(
+        pluginData,
+        subTagBody,
+        subTagArgs,
+        extraData,
+        subTagPermissionMatchParams,
+        tagFnCallsObj,
+      );
       return rendered.content!;
     },
-  };
+  });
 
   if (typeof body === "string") {
     // Plain text tag

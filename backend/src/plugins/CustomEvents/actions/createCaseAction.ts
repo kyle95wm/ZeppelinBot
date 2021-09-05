@@ -1,10 +1,10 @@
-import { GuildPluginData } from "knub";
-import { CustomEventsPluginType, TCustomEvent } from "../types";
 import * as t from "io-ts";
-import { renderTemplate } from "../../../templateFormatter";
+import { GuildPluginData } from "knub";
 import { CaseTypes } from "../../../data/CaseTypes";
-import { ActionError } from "../ActionError";
+import { renderTemplate, TemplateSafeValueContainer } from "../../../templateFormatter";
 import { CasesPlugin } from "../../Cases/CasesPlugin";
+import { ActionError } from "../ActionError";
+import { CustomEventsPluginType, TCustomEvent } from "../types";
 
 export const CreateCaseAction = t.type({
   type: t.literal("create_case"),
@@ -18,7 +18,7 @@ export type TCreateCaseAction = t.TypeOf<typeof CreateCaseAction>;
 export async function createCaseAction(
   pluginData: GuildPluginData<CustomEventsPluginType>,
   action: TCreateCaseAction,
-  values: any,
+  values: TemplateSafeValueContainer,
   event: TCustomEvent,
   eventData: any,
 ) {

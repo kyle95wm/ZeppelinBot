@@ -1,8 +1,8 @@
 import * as t from "io-ts";
-import { automodAction } from "../helpers";
 import { LogType } from "../../../data/LogType";
-import { LogsPlugin } from "../../Logs/LogsPlugin";
 import { nonNullish, unique } from "../../../utils";
+import { LogsPlugin } from "../../Logs/LogsPlugin";
+import { automodAction } from "../helpers";
 
 export const ChangeNicknameAction = automodAction({
   configType: t.union([
@@ -22,7 +22,7 @@ export const ChangeNicknameAction = automodAction({
       const newName = typeof actionConfig === "string" ? actionConfig : actionConfig.name;
 
       member.edit({ nick: newName }).catch(err => {
-        pluginData.getPlugin(LogsPlugin).log(LogType.BOT_ALERT, {
+        pluginData.getPlugin(LogsPlugin).logBotAlert({
           body: `Failed to change the nickname of \`${member.id}\``,
         });
       });

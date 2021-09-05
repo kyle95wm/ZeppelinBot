@@ -1,9 +1,11 @@
+import { GuildChannel } from "discord.js";
+import { memberToTemplateSafeMember, userToTemplateSafeUser } from "../../../utils/templateSafeObjects";
 import { commandTypeHelpers as ct } from "../../../commandTypes";
-import { sendErrorMessage, sendSuccessMessage, canActOn } from "../../../pluginUtils";
-import { rolesCmd } from "../types";
-import { resolveRoleId, stripObjectToScalars, verboseUserMention } from "../../../utils";
 import { LogType } from "../../../data/LogType";
-import { GuildChannel } from "eris";
+import { canActOn, sendErrorMessage, sendSuccessMessage } from "../../../pluginUtils";
+import { resolveRoleId, verboseUserMention } from "../../../utils";
+import { rolesCmd } from "../types";
+import { LogsPlugin } from "../../Logs/LogsPlugin";
 
 export const AddRoleCmd = rolesCmd({
   trigger: "addrole",
@@ -34,28 +36,28 @@ export const AddRoleCmd = rolesCmd({
     }
 
     // Sanity check: make sure the role is configured properly
-    const role = (msg.channel as GuildChannel).guild.roles.get(roleId);
+    const role = (msg.channel as GuildChannel).guild.roles.cache.get(roleId);
     if (!role) {
-      pluginData.state.logs.log(LogType.BOT_ALERT, {
+      pluginData.getPlugin(LogsPlugin).logBotAlert({
         body: `Unknown role configured for 'roles' plugin: ${roleId}`,
       });
       sendErrorMessage(pluginData, msg.channel, "You cannot assign that role");
       return;
     }
 
-    if (args.member.roles.includes(roleId)) {
+    if (args.member.roles.cache.has(roleId)) {
       sendErrorMessage(pluginData, msg.channel, "Member already has that role");
       return;
     }
 
     pluginData.state.logs.ignoreLog(LogType.MEMBER_ROLE_ADD, args.member.id);
 
-    await args.member.addRole(roleId);
+    await args.member.roles.add(roleId);
 
-    pluginData.state.logs.log(LogType.MEMBER_ROLE_ADD, {
-      member: stripObjectToScalars(args.member, ["user", "roles"]),
-      roles: role.name,
-      mod: stripObjectToScalars(msg.author),
+    pluginData.getPlugin(LogsPlugin).logMemberRoleAdd({
+      mod: msg.author,
+      member: args.member,
+      roles: [role],
     });
 
     sendSuccessMessage(

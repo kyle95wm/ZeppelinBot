@@ -1,10 +1,11 @@
-import { utilityCmd } from "../types";
-import { commandTypeHelpers as ct } from "../../../commandTypes";
-import { downloadFile, isEmoji, SECONDS } from "../../../utils";
+import { MessageAttachment } from "discord.js";
 import fs from "fs";
+import photon from "@silvia-odwyer/photon-node";
 import twemoji from "twemoji";
-import Jimp from "jimp";
+import { commandTypeHelpers as ct } from "../../../commandTypes";
 import { sendErrorMessage } from "../../../pluginUtils";
+import { downloadFile, isEmoji, SECONDS } from "../../../utils";
+import { utilityCmd } from "../types";
 
 const fsp = fs.promises;
 
@@ -13,12 +14,24 @@ async function getBufferFromUrl(url: string): Promise<Buffer> {
   return fsp.readFile(downloadedEmoji.path);
 }
 
-async function resizeBuffer(input: Buffer, width: number, height: number): Promise<Buffer> {
-  const image = await Jimp.read(input);
-  return image.resize(width, height).getBufferAsync(Jimp.MIME_PNG);
+function bufferToPhotonImage(input: Buffer): photon.PhotonImage {
+  const base64 = input.toString("base64").replace(/^data:image\/\w+;base64,/, "");
+
+  return photon.PhotonImage.new_from_base64(base64);
 }
 
-const CDN_URL = "https://twemoji.maxcdn.com/2/svg";
+function photonImageToBuffer(image: photon.PhotonImage): Buffer {
+  const base64 = image.get_base64().replace(/^data:image\/\w+;base64,/, "");
+  return Buffer.from(base64, "base64");
+}
+
+function resizeBuffer(input: Buffer, width: number, height: number): Buffer {
+  const photonImage = bufferToPhotonImage(input);
+  photon.resize(photonImage, width, height, photon.SamplingFilter.Lanczos3);
+  return photonImageToBuffer(photonImage);
+}
+
+const CDN_URL = "https://twemoji.maxcdn.com/";
 
 export const JumboCmd = utilityCmd({
   trigger: "jumbo",
@@ -36,8 +49,8 @@ export const JumboCmd = utilityCmd({
     const size = config.jumbo_size > 2048 ? 2048 : config.jumbo_size;
     const emojiRegex = new RegExp(`(<.*:).*:(\\d+)`);
     const results = emojiRegex.exec(args.emoji);
-    let extention = ".png";
-    let file;
+    let extension = ".png";
+    let file: MessageAttachment | undefined;
 
     if (!isEmoji(args.emoji)) {
       sendErrorMessage(pluginData, msg.channel, "Invalid emoji");
@@ -47,39 +60,36 @@ export const JumboCmd = utilityCmd({
     if (results) {
       let url = "https://cdn.discordapp.com/emojis/";
       if (results[1] === "<a:") {
-        extention = ".gif";
+        extension = ".gif";
       }
-      url += `${results[2]}${extention}`;
-      if (extention === ".png") {
-        const image = await resizeBuffer(await getBufferFromUrl(url), size, size);
-        file = {
-          name: `emoji${extention}`,
-          file: image,
-        };
+      url += `${results[2]}${extension}`;
+      if (extension === ".png") {
+        const image = resizeBuffer(await getBufferFromUrl(url), size, size);
+        file = new MessageAttachment(image, `emoji${extension}`);
       } else {
         const image = await getBufferFromUrl(url);
-        file = {
-          name: `emoji${extention}`,
-          file: image,
-        };
+        file = new MessageAttachment(image, `emoji${extension}`);
       }
     } else {
-      let url = CDN_URL + `/${twemoji.convert.toCodePoint(args.emoji)}.svg`;
-      let image;
+      let url = `${twemoji.base}${twemoji.size}/${twemoji.convert.toCodePoint(args.emoji)}${twemoji.ext}`;
+      let image: Buffer | undefined;
       try {
-        image = await resizeBuffer(await getBufferFromUrl(url), size, size);
-      } catch {
-        if (url.toLocaleLowerCase().endsWith("fe0f.svg")) {
-          url = url.slice(0, url.lastIndexOf("-fe0f")) + ".svg";
+        const downloadedBuffer = await getBufferFromUrl(url);
+        image = resizeBuffer(await getBufferFromUrl(url), size, size);
+      } catch (err) {
+        if (url.toLocaleLowerCase().endsWith("fe0f.png")) {
+          url = url.slice(0, url.lastIndexOf("-fe0f")) + ".png";
           image = await resizeBuffer(await getBufferFromUrl(url), size, size);
         }
       }
-      file = {
-        name: `emoji.png`,
-        file: image,
-      };
+      if (!image) {
+        sendErrorMessage(pluginData, msg.channel, "Error occurred while jumboing default emoji");
+        return;
+      }
+
+      file = new MessageAttachment(image, "emoji.png");
     }
 
-    msg.channel.createMessage("", file);
+    msg.channel.send({ files: [file] });
   },
 });

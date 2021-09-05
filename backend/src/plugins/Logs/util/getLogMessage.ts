@@ -1,27 +1,38 @@
+import { MessageOptions } from "discord.js";
 import { GuildPluginData } from "knub";
-import { FORMAT_NO_TIMESTAMP, LogsPluginType, TLogChannel, TLogFormats } from "../types";
+import { SavedMessage } from "../../../data/entities/SavedMessage";
 import { LogType } from "../../../data/LogType";
+import { logger } from "../../../logger";
 import {
+  renderTemplate,
+  TemplateParseError,
+  TemplateSafeValueContainer,
+  TypedTemplateSafeValueContainer,
+} from "../../../templateFormatter";
+import {
+  messageSummary,
+  renderRecursively,
+  resolveMember,
+  validateAndParseMessageContent,
+  verboseChannelMention,
   verboseUserMention,
   verboseUserName,
-  verboseChannelMention,
-  messageSummary,
-  resolveMember,
-  renderRecursively,
 } from "../../../utils";
-import { SavedMessage } from "../../../data/entities/SavedMessage";
-import { renderTemplate, TemplateParseError } from "../../../templateFormatter";
-import { logger } from "../../../logger";
-import moment from "moment-timezone";
 import { TimeAndDatePlugin } from "../../TimeAndDate/TimeAndDatePlugin";
-import { MessageContent } from "eris";
+import { FORMAT_NO_TIMESTAMP, ILogTypeData, LogsPluginType, TLogChannel } from "../types";
+import {
+  getTemplateSafeMemberLevel,
+  TemplateSafeMember,
+  memberToTemplateSafeMember,
+  TemplateSafeUser,
+} from "../../../utils/templateSafeObjects";
 
-export async function getLogMessage(
+export async function getLogMessage<TLogType extends keyof ILogTypeData>(
   pluginData: GuildPluginData<LogsPluginType>,
-  type: LogType,
-  data: any,
+  type: TLogType,
+  data: TypedTemplateSafeValueContainer<ILogTypeData[TLogType]>,
   opts?: Pick<TLogChannel, "format" | "timestamp_format" | "include_embed_timestamp">,
-): Promise<MessageContent | null> {
+): Promise<MessageOptions | null> {
   const config = pluginData.config.get();
   const format = opts?.format?.[LogType[type]] || config.format[LogType[type]] || "";
   if (format === "" || format == null) return null;
@@ -38,28 +49,43 @@ export async function getLogMessage(
   const isoTimestamp = time.toISOString();
   const timestamp = timestampFormat ? time.format(timestampFormat) : "";
 
-  const values = {
+  const values = new TemplateSafeValueContainer({
     ...data,
     timestamp,
-    userMention: async inputUserOrMember => {
-      if (!inputUserOrMember) return "";
+    userMention: async (inputUserOrMember: unknown) => {
+      if (!inputUserOrMember) {
+        return "";
+      }
 
-      const usersOrMembers = Array.isArray(inputUserOrMember) ? inputUserOrMember : [inputUserOrMember];
+      const inputArray = Array.isArray(inputUserOrMember) ? inputUserOrMember : [inputUserOrMember];
+      // TODO: Resolve IDs to users/members
+      const usersOrMembers = inputArray.filter(
+        v => v instanceof TemplateSafeUser || v instanceof TemplateSafeMember,
+      ) as Array<TemplateSafeUser | TemplateSafeMember>;
 
       const mentions: string[] = [];
       for (const userOrMember of usersOrMembers) {
         let user;
-        let member;
+        let member: TemplateSafeMember | null = null;
 
         if (userOrMember.user) {
-          member = userOrMember;
+          member = userOrMember as TemplateSafeMember;
           user = member.user;
         } else {
           user = userOrMember;
-          member = await resolveMember(pluginData.client, pluginData.guild, user.id);
+          const apiMember = await resolveMember(pluginData.client, pluginData.guild, user.id);
+          if (apiMember) {
+            member = memberToTemplateSafeMember(apiMember);
+          }
         }
 
-        const memberConfig = (await pluginData.config.getMatchingConfig({ member, userId: user.id })) || ({} as any);
+        const level = member ? getTemplateSafeMemberLevel(pluginData, member) : 0;
+        const memberConfig =
+          (await pluginData.config.getMatchingConfig({
+            level,
+            memberRoles: member ? member.roles.map(r => r.id) : [],
+            userId: user.id,
+          })) || ({} as any);
 
         // Revert to old behavior (verbose name w/o ping if allow_user_mentions is enabled (for whatever reason))
         if (config.allow_user_mentions) {
@@ -79,7 +105,7 @@ export async function getLogMessage(
       if (!msg) return "";
       return messageSummary(msg);
     },
-  };
+  });
 
   if (type === LogType.BOT_ALERT) {
     const valuesWithoutTmplEval = { ...values };
@@ -108,8 +134,14 @@ export async function getLogMessage(
     if (timestamp) {
       formatted = `${timestamp} ${formatted}`;
     }
-  } else if (formatted != null && formatted.embed && includeEmbedTimestamp) {
-    formatted.embed.timestamp = isoTimestamp;
+  } else if (formatted != null) {
+    formatted = validateAndParseMessageContent(formatted);
+
+    if (formatted.embeds && Array.isArray(formatted.embeds) && includeEmbedTimestamp) {
+      for (const embed of formatted.embeds) {
+        embed.timestamp = isoTimestamp;
+      }
+    }
   }
 
   return formatted;

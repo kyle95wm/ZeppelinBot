@@ -1,11 +1,10 @@
+import { getRepository, In, InsertResult, Repository } from "typeorm";
+import { BaseGuildRepository } from "./BaseGuildRepository";
+import { CaseTypes } from "./CaseTypes";
+import { connection } from "./db";
 import { Case } from "./entities/Case";
 import { CaseNote } from "./entities/CaseNote";
-import { BaseGuildRepository } from "./BaseGuildRepository";
-import { getRepository, In, Repository } from "typeorm";
-import { DBDateFormat, disableLinkPreviews } from "../utils";
-import { CaseTypes } from "./CaseTypes";
 import moment = require("moment-timezone");
-import { connection } from "./db";
 
 const CASE_SUMMARY_REASON_MAX_LENGTH = 300;
 
@@ -117,13 +116,30 @@ export class GuildCases extends BaseGuildRepository {
     );
   }
 
-  async create(data): Promise<Case> {
-    const result = await this.cases.insert({
-      ...data,
-      guild_id: this.guildId,
-      case_number: () => `(SELECT IFNULL(MAX(case_number)+1, 1) FROM cases AS ma2 WHERE guild_id = ${this.guildId})`,
-    });
+  async createInternal(data): Promise<InsertResult> {
+    return this.cases
+      .insert({
+        ...data,
+        guild_id: this.guildId,
+        case_number: () => `(SELECT IFNULL(MAX(case_number)+1, 1) FROM cases AS ma2 WHERE guild_id = ${this.guildId})`,
+      })
+      .catch(err => {
+        if (err?.code === "ER_DUP_ENTRY") {
+          if (data.audit_log_id) {
+            console.trace(`Tried to insert case with duplicate audit_log_id`);
+            return this.createInternal({
+              ...data,
+              audit_log_id: undefined,
+            });
+          }
+        }
 
+        throw err;
+      });
+  }
+
+  async create(data): Promise<Case> {
+    const result = await this.createInternal(data);
     return (await this.find(result.identifiers[0].id))!;
   }
 

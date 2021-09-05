@@ -1,12 +1,14 @@
-import { modActionsCmd } from "../types";
+import { userToTemplateSafeUser } from "../../../utils/templateSafeObjects";
 import { commandTypeHelpers as ct } from "../../../commandTypes";
-import { canActOn, sendErrorMessage, hasPermission, sendSuccessMessage } from "../../../pluginUtils";
-import { resolveUser, resolveMember, stripObjectToScalars } from "../../../utils";
-import { formatReasonWithAttachments } from "../functions/formatReasonWithAttachments";
 import { CaseTypes } from "../../../data/CaseTypes";
-import { CasesPlugin } from "../../../plugins/Cases/CasesPlugin";
 import { Case } from "../../../data/entities/Case";
 import { LogType } from "../../../data/LogType";
+import { CasesPlugin } from "../../../plugins/Cases/CasesPlugin";
+import { canActOn, hasPermission, sendErrorMessage, sendSuccessMessage } from "../../../pluginUtils";
+import { resolveMember, resolveUser } from "../../../utils";
+import { formatReasonWithAttachments } from "../functions/formatReasonWithAttachments";
+import { modActionsCmd } from "../types";
+import { LogsPlugin } from "../../Logs/LogsPlugin";
 
 const opts = {
   mod: ct.member({ option: true }),
@@ -59,7 +61,7 @@ export const AddCaseCmd = modActionsCmd({
       return;
     }
 
-    const reason = formatReasonWithAttachments(args.reason, msg.attachments);
+    const reason = formatReasonWithAttachments(args.reason, [...msg.attachments.values()]);
 
     // Create the case
     const casesPlugin = pluginData.getPlugin(CasesPlugin);
@@ -72,18 +74,14 @@ export const AddCaseCmd = modActionsCmd({
     });
 
     if (user) {
-      sendSuccessMessage(
-        pluginData,
-        msg.channel,
-        `Case #${theCase.case_number} created for **${user.username}#${user.discriminator}**`,
-      );
+      sendSuccessMessage(pluginData, msg.channel, `Case #${theCase.case_number} created for **${user.tag}**`);
     } else {
       sendSuccessMessage(pluginData, msg.channel, `Case #${theCase.case_number} created`);
     }
 
     // Log the action
-    pluginData.state.serverLogs.log(LogType.CASE_CREATE, {
-      mod: stripObjectToScalars(mod.user),
+    pluginData.getPlugin(LogsPlugin).logCaseCreate({
+      mod: mod.user,
       userId: user.id,
       caseNum: theCase.case_number,
       caseType: type.toUpperCase(),

@@ -1,14 +1,16 @@
-import { GuildPluginData } from "knub";
-import { MutesPluginType, UnmuteResult } from "../types";
-import { CaseArgs } from "../../Cases/types";
-import { resolveUser, stripObjectToScalars, resolveMember } from "../../../utils";
-import { memberHasMutedRole } from "./memberHasMutedRole";
+import { Snowflake } from "discord.js";
 import humanizeDuration from "humanize-duration";
-import { CasesPlugin } from "../../Cases/CasesPlugin";
+import { GuildPluginData } from "knub";
+import { userToTemplateSafeUser } from "../../../utils/templateSafeObjects";
 import { CaseTypes } from "../../../data/CaseTypes";
 import { LogType } from "../../../data/LogType";
-import { MemberOptions } from "eris";
+import { resolveMember, resolveUser } from "../../../utils";
 import { memberRolesLock } from "../../../utils/lockNameHelpers";
+import { CasesPlugin } from "../../Cases/CasesPlugin";
+import { CaseArgs } from "../../Cases/types";
+import { MutesPluginType, UnmuteResult } from "../types";
+import { memberHasMutedRole } from "./memberHasMutedRole";
+import { LogsPlugin } from "../../Logs/LogsPlugin";
 
 export async function unmuteUser(
   pluginData: GuildPluginData<MutesPluginType>,
@@ -18,8 +20,8 @@ export async function unmuteUser(
 ): Promise<UnmuteResult | null> {
   const existingMute = await pluginData.state.mutes.findExistingMuteForUserId(userId);
   const user = await resolveUser(pluginData.client, userId);
-  const member = await resolveMember(pluginData.client, pluginData.guild, userId); // Grab the fresh member so we don't have stale role info
-  const modId = caseArgs.modId || pluginData.client.user.id;
+  const member = await resolveMember(pluginData.client, pluginData.guild, userId, true); // Grab the fresh member so we don't have stale role info
+  const modId = caseArgs.modId || pluginData.client.user!.id;
 
   if (!existingMute && member && !memberHasMutedRole(pluginData, member)) return null;
 
@@ -36,18 +38,18 @@ export async function unmuteUser(
       const lock = await pluginData.locks.acquire(memberRolesLock(member));
 
       const muteRole = pluginData.config.get().mute_role;
-      if (muteRole && member.roles.includes(muteRole)) {
-        await member.removeRole(muteRole);
-        member.roles = member.roles.filter(r => r !== muteRole);
+      if (muteRole && member.roles.cache.has(muteRole as Snowflake)) {
+        await member.roles.remove(muteRole as Snowflake);
       }
       if (existingMute?.roles_to_restore) {
-        const memberOptions: MemberOptions = {};
-        const guildRoles = pluginData.guild.roles;
-        memberOptions.roles = Array.from(
-          new Set([...existingMute.roles_to_restore, ...member.roles.filter(x => x !== muteRole && guildRoles.has(x))]),
-        );
-        await member.edit(memberOptions);
-        member.roles = memberOptions.roles;
+        const guildRoles = pluginData.guild.roles.cache;
+        const newRoles = [...member.roles.cache.keys()].filter(roleId => roleId !== muteRole);
+        for (const toRestore of existingMute.roles_to_restore) {
+          if (guildRoles.has(toRestore) && toRestore !== muteRole && !newRoles.includes(toRestore)) {
+            newRoles.push(toRestore);
+          }
+        }
+        await member.roles.set(newRoles);
       }
 
       lock.unlock();
@@ -85,21 +87,21 @@ export async function unmuteUser(
   });
 
   // Log the action
-  const mod = pluginData.client.users.get(modId);
+  const mod = await pluginData.client.users.fetch(modId as Snowflake);
   if (unmuteTime) {
-    pluginData.state.serverLogs.log(LogType.MEMBER_TIMED_UNMUTE, {
-      mod: stripObjectToScalars(mod),
-      user: stripObjectToScalars(user),
+    pluginData.getPlugin(LogsPlugin).logMemberTimedUnmute({
+      mod,
+      user,
       caseNumber: createdCase.case_number,
       time: timeUntilUnmute,
-      reason: caseArgs.reason,
+      reason: caseArgs.reason ?? "",
     });
   } else {
-    pluginData.state.serverLogs.log(LogType.MEMBER_UNMUTE, {
-      mod: stripObjectToScalars(mod),
-      user: stripObjectToScalars(user),
+    pluginData.getPlugin(LogsPlugin).logMemberUnmute({
+      mod,
+      user,
       caseNumber: createdCase.case_number,
-      reason: caseArgs.reason,
+      reason: caseArgs.reason ?? "",
     });
   }
 
