@@ -19,6 +19,12 @@ Zeppelin is a moderation bot for Discord, designed with large servers and reliab
 
 See https://zeppelin.gg/ for more details.
 
+## Changes from Upstream:
+- Allow yaml anchors
+  - Top-level `alias` key
+- Docker support
+- Support for formatted timestamps
+
 ## Development
 These instructions are intended for bot development only.
 
