@@ -4,7 +4,6 @@ import { GuildPluginData } from "knub";
 import { userToTemplateSafeUser } from "../../../utils/templateSafeObjects";
 import { CaseTypes } from "../../../data/CaseTypes";
 import { Case } from "../../../data/entities/Case";
-import { LogType } from "../../../data/LogType";
 import { LogsPlugin } from "../../../plugins/Logs/LogsPlugin";
 import { ERRORS, RecoverablePluginError } from "../../../RecoverablePluginError";
 import { renderTemplate, TemplateSafeValueContainer } from "../../../templateFormatter";
@@ -19,7 +18,12 @@ import {
 import { muteLock } from "../../../utils/lockNameHelpers";
 import { CasesPlugin } from "../../Cases/CasesPlugin";
 import { MuteOptions, MutesPluginType } from "../types";
+import { Mute } from "../../../data/entities/Mute";
+import { registerExpiringMute } from "../../../data/loops/expiringMutesLoop";
 
+/**
+ * TODO: Clean up this function
+ */
 export async function muteUser(
   pluginData: GuildPluginData<MutesPluginType>,
   userId: string,
@@ -68,7 +72,7 @@ export async function muteUser(
       if (removeRoles) {
         // exclude managed roles from being removed
         const managedRoles = pluginData.guild.roles.cache.filter(x => x.managed).map(y => y.id);
-        newRoles = currentUserRoles.filter(r => !managedRoles.includes(r));
+        newRoles = currentUserRoles.filter(r => managedRoles.includes(r));
         await member.roles.set(newRoles as Snowflake[]);
       }
     } else {
@@ -114,7 +118,7 @@ export async function muteUser(
           logs.logBotAlert({
             body: `Cannot mute users, specified mute role is above Zeppelin in the role hierarchy`,
           });
-          throw new RecoverablePluginError(ERRORS.MUTE_ROLE_ABOVE_ZEP);
+          throw new RecoverablePluginError(ERRORS.MUTE_ROLE_ABOVE_ZEP, pluginData.guild);
         }
       }
     }
@@ -132,6 +136,7 @@ export async function muteUser(
 
   // If the user is already muted, update the duration of their existing mute
   const existingMute = await pluginData.state.mutes.findExistingMuteForUserId(user.id);
+  let finalMute: Mute;
   let notifyResult: UserNotificationResult = { method: null, success: true };
 
   if (existingMute) {
@@ -139,9 +144,12 @@ export async function muteUser(
       rolesToRestore = Array.from(new Set([...existingMute.roles_to_restore, ...rolesToRestore]));
     }
     await pluginData.state.mutes.updateExpiryTime(user.id, muteTime, rolesToRestore);
+    finalMute = (await pluginData.state.mutes.findExistingMuteForUserId(user.id))!;
   } else {
-    await pluginData.state.mutes.addMute(user.id, muteTime, rolesToRestore);
+    finalMute = await pluginData.state.mutes.addMute(user.id, muteTime, rolesToRestore);
   }
+
+  registerExpiringMute(finalMute);
 
   const template = existingMute
     ? config.update_mute_message

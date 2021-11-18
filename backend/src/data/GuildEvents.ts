@@ -1,42 +1,69 @@
-import { QueuedEventEmitter } from "../QueuedEventEmitter";
-import { BaseGuildRepository } from "./BaseGuildRepository";
+import { Mute } from "./entities/Mute";
+import { ScheduledPost } from "./entities/ScheduledPost";
+import { Reminder } from "./entities/Reminder";
+import { Tempban } from "./entities/Tempban";
+import { VCAlert } from "./entities/VCAlert";
 
-export class GuildEvents extends BaseGuildRepository {
-  private queuedEventEmitter: QueuedEventEmitter;
-  private pluginListeners: Map<string, Map<string, any[]>>;
+interface GuildEventArgs extends Record<string, unknown[]> {
+  expiredMute: [Mute];
+  scheduledPost: [ScheduledPost];
+  reminder: [Reminder];
+  expiredTempban: [Tempban];
+  expiredVCAlert: [VCAlert];
+}
 
-  constructor(guildId) {
-    super(guildId);
-    this.queuedEventEmitter = new QueuedEventEmitter();
+type GuildEvent = keyof GuildEventArgs;
+
+type GuildEventListener<K extends GuildEvent> = (...args: GuildEventArgs[K]) => void;
+
+type ListenerMap = {
+  [K in GuildEvent]?: Array<GuildEventListener<K>>;
+};
+
+const guildListeners: Map<string, ListenerMap> = new Map();
+
+/**
+ * @return - Function to unregister the listener
+ */
+export function onGuildEvent<K extends GuildEvent>(
+  guildId: string,
+  eventName: K,
+  listener: GuildEventListener<K>,
+): () => void {
+  if (!guildListeners.has(guildId)) {
+    guildListeners.set(guildId, {});
   }
-
-  public on(pluginName: string, eventName: string, fn) {
-    this.queuedEventEmitter.on(eventName, fn);
-
-    if (!this.pluginListeners.has(pluginName)) {
-      this.pluginListeners.set(pluginName, new Map());
-    }
-
-    const pluginListeners = this.pluginListeners.get(pluginName)!;
-    if (!pluginListeners.has(eventName)) {
-      pluginListeners.set(eventName, []);
-    }
-
-    const pluginEventListeners = pluginListeners.get(eventName)!;
-    pluginEventListeners.push(fn);
+  const listenerMap = guildListeners.get(guildId)!;
+  if (listenerMap[eventName] == null) {
+    listenerMap[eventName] = [];
   }
+  listenerMap[eventName]!.push(listener);
 
-  public offPlugin(pluginName: string) {
-    const pluginListeners = this.pluginListeners.get(pluginName) || new Map();
-    for (const [eventName, listeners] of Array.from(pluginListeners.entries())) {
-      for (const listener of listeners) {
-        this.queuedEventEmitter.off(eventName, listener);
-      }
-    }
-    this.pluginListeners.delete(pluginName);
-  }
+  return () => {
+    listenerMap[eventName]!.splice(listenerMap[eventName]!.indexOf(listener), 1);
+  };
+}
 
-  public emit(eventName: string, args: any[] = []) {
-    return this.queuedEventEmitter.emit(eventName, args);
+export function emitGuildEvent<K extends GuildEvent>(guildId: string, eventName: K, args: GuildEventArgs[K]): void {
+  if (!guildListeners.has(guildId)) {
+    return;
   }
+  const listenerMap = guildListeners.get(guildId)!;
+  if (listenerMap[eventName] == null) {
+    return;
+  }
+  for (const listener of listenerMap[eventName]!) {
+    listener(...args);
+  }
+}
+
+export function hasGuildEventListener<K extends GuildEvent>(guildId: string, eventName: K): boolean {
+  if (!guildListeners.has(guildId)) {
+    return false;
+  }
+  const listenerMap = guildListeners.get(guildId)!;
+  if (listenerMap[eventName] == null || listenerMap[eventName]!.length === 0) {
+    return false;
+  }
+  return true;
 }

@@ -43,6 +43,10 @@ export class GuildVCAlerts extends BaseGuildRepository {
     });
   }
 
+  find(id: number) {
+    return this.allAlerts.findOne({ id });
+  }
+
   async delete(id) {
     await this.allAlerts.delete({
       guild_id: this.guildId,
@@ -51,7 +55,7 @@ export class GuildVCAlerts extends BaseGuildRepository {
   }
 
   async add(requestorId: string, userId: string, channelId: string, expiresAt: string, body: string, active: boolean) {
-    await this.allAlerts.insert({
+    const result = await this.allAlerts.insert({
       guild_id: this.guildId,
       requestor_id: requestorId,
       user_id: userId,
@@ -60,5 +64,7 @@ export class GuildVCAlerts extends BaseGuildRepository {
       body,
       active,
     });
+
+    return (await this.find(result.identifiers[0].id))!;
   }
 }

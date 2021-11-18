@@ -73,6 +73,11 @@ export const TagsPlugin = zeppelinGuildPlugin<TagsPluginType>()({
     TagCreateCmd,
   ],
 
+  // prettier-ignore
+  events: [
+    onMessageDelete,
+  ],
+
   public: {
     renderTagBody: mapToPublicFn(renderTagBody),
     findTagByName: mapToPublicFn(findTagByName),
@@ -117,9 +122,6 @@ export const TagsPlugin = zeppelinGuildPlugin<TagsPluginType>()({
     state.onMessageCreateFn = msg => onMessageCreate(pluginData, msg);
     state.savedMessages.events.on("create", state.onMessageCreateFn);
 
-    state.onMessageDeleteFn = msg => onMessageDelete(pluginData, msg);
-    state.savedMessages.events.on("delete", state.onMessageDeleteFn);
-
     const timeAndDate = pluginData.getPlugin(TimeAndDatePlugin);
 
     const tz = timeAndDate.getGuildTz();
@@ -131,6 +133,10 @@ export const TagsPlugin = zeppelinGuildPlugin<TagsPluginType>()({
 
         if (typeof str !== "string") {
           return Date.now();
+        }
+
+        if (!Number.isNaN(Number(str))) {
+          return Number(str); // Unix timestamp as a string
         }
 
         return moment.tz(str, "YYYY-MM-DD HH:mm:ss", tz).valueOf();
@@ -156,6 +162,14 @@ export const TagsPlugin = zeppelinGuildPlugin<TagsPluginType>()({
         let reference;
         let delay;
 
+        for (const [i, arg] of args.entries()) {
+          if (typeof arg === "number") {
+            args[i] = String(arg);
+          } else if (typeof arg !== "string") {
+            args[i] = "";
+          }
+        }
+
         if (args.length >= 2) {
           // (time, delay)
           reference = this.parseDateTime(args[0]);
@@ -177,6 +191,14 @@ export const TagsPlugin = zeppelinGuildPlugin<TagsPluginType>()({
         if (args.length === 0) return;
         let reference;
         let delay;
+
+        for (const [i, arg] of args.entries()) {
+          if (typeof arg === "number") {
+            args[i] = String(arg);
+          } else if (typeof arg !== "string") {
+            args[i] = "";
+          }
+        }
 
         if (args.length >= 2) {
           // (time, delay)
@@ -249,6 +271,5 @@ export const TagsPlugin = zeppelinGuildPlugin<TagsPluginType>()({
 
   beforeUnload(pluginData) {
     pluginData.state.savedMessages.events.off("create", pluginData.state.onMessageCreateFn);
-    pluginData.state.savedMessages.events.off("delete", pluginData.state.onMessageDeleteFn);
   },
 });

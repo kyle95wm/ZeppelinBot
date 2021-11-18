@@ -1,4 +1,4 @@
-import { PluginOptions } from "knub";
+import { CooldownManager, PluginOptions } from "knub";
 import DefaultLogMessages from "../../data/DefaultLogMessages.json";
 import { GuildArchives } from "../../data/GuildArchives";
 import { GuildCases } from "../../data/GuildCases";
@@ -112,6 +112,7 @@ import { logVoiceChannelLeave } from "./logFunctions/logVoiceChannelLeave";
 import { logVoiceChannelMove } from "./logFunctions/logVoiceChannelMove";
 import { logMemberTimedUnban } from "./logFunctions/logMemberTimedUnban";
 import { logDmFailed } from "./logFunctions/logDmFailed";
+import { InternalPosterPlugin } from "../InternalPoster/InternalPosterPlugin";
 
 const defaultOptions: PluginOptions<LogsPluginType> = {
   config: {
@@ -122,7 +123,7 @@ const defaultOptions: PluginOptions<LogsPluginType> = {
     },
     ping_user: true, // Legacy/deprecated, if below is false mentions wont actually ping. In case you really want the old behavior, set below to true
     allow_user_mentions: false,
-    timestamp_format: "YYYY-MM-DD HH:mm:ss z",
+    timestamp_format: "[<t:]X[>]",
     include_embed_timestamp: true,
   },
 
@@ -145,6 +146,7 @@ export const LogsPlugin = zeppelinGuildPlugin<LogsPluginType>()({
 
   dependencies: async () => [
     TimeAndDatePlugin,
+    InternalPosterPlugin,
     // The `as any` cast here is to prevent TypeScript from locking up from the circular dependency
     ((await import("../Cases/CasesPlugin")) as any).CasesPlugin,
   ],
@@ -266,7 +268,8 @@ export const LogsPlugin = zeppelinGuildPlugin<LogsPluginType>()({
     state.archives = GuildArchives.getGuildInstance(guild.id);
     state.cases = GuildCases.getGuildInstance(guild.id);
 
-    state.batches = new Map();
+    state.buffers = new Map();
+    state.channelCooldowns = new CooldownManager();
 
     state.regexRunner = getRegExpRunner(`guild-${pluginData.guild.id}`);
   },
@@ -306,13 +309,23 @@ export const LogsPlugin = zeppelinGuildPlugin<LogsPluginType>()({
   },
 
   beforeUnload(pluginData) {
-    pluginData.state.guildLogs.removeListener("log", pluginData.state.logListener);
+    if (pluginData.state.logListener) {
+      pluginData.state.guildLogs.removeListener("log", pluginData.state.logListener);
+    }
 
-    pluginData.state.savedMessages.events.off("delete", pluginData.state.onMessageDeleteFn);
-    pluginData.state.savedMessages.events.off("deleteBulk", pluginData.state.onMessageDeleteBulkFn);
-    pluginData.state.savedMessages.events.off("update", pluginData.state.onMessageUpdateFn);
+    if (pluginData.state.onMessageDeleteFn) {
+      pluginData.state.savedMessages.events.off("delete", pluginData.state.onMessageDeleteFn);
+    }
+    if (pluginData.state.onMessageDeleteBulkFn) {
+      pluginData.state.savedMessages.events.off("deleteBulk", pluginData.state.onMessageDeleteBulkFn);
+    }
+    if (pluginData.state.onMessageUpdateFn) {
+      pluginData.state.savedMessages.events.off("update", pluginData.state.onMessageUpdateFn);
+    }
 
-    pluginData.state.regexRunner.off("repeatedTimeout", pluginData.state.regexRunnerRepeatedTimeoutListener);
+    if (pluginData.state.regexRunnerRepeatedTimeoutListener) {
+      pluginData.state.regexRunner.off("repeatedTimeout", pluginData.state.regexRunnerRepeatedTimeoutListener);
+    }
     discardRegExpRunner(`guild-${pluginData.guild.id}`);
   },
 });

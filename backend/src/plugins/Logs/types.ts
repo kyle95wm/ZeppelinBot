@@ -1,12 +1,12 @@
 import * as t from "io-ts";
 import { z } from "zod";
-import { BasePluginType, typedGuildEventListener } from "knub";
+import { BasePluginType, CooldownManager, typedGuildEventListener } from "knub";
 import { GuildArchives } from "../../data/GuildArchives";
 import { GuildCases } from "../../data/GuildCases";
 import { GuildLogs } from "../../data/GuildLogs";
 import { GuildSavedMessages } from "../../data/GuildSavedMessages";
 import { RegExpRunner } from "../../RegExpRunner";
-import { tMessageContent, tNullable } from "../../utils";
+import { StrictMessageContent, tMessageContent, tNullable } from "../../utils";
 import { TRegex } from "../../validatorUtils";
 import { LogType } from "../../data/LogType";
 import { GuildMember } from "discord.js";
@@ -28,6 +28,7 @@ import {
   TemplateSafeValueContainer,
   TypedTemplateSafeValueContainer,
 } from "../../templateFormatter";
+import { MessageBuffer } from "../../utils/MessageBuffer";
 
 export const tLogFormats = t.record(t.string, t.union([t.string, tMessageContent]));
 export type TLogFormats = t.TypeOf<typeof tLogFormats>;
@@ -85,7 +86,8 @@ export interface LogsPluginType extends BasePluginType {
 
     logListener;
 
-    batches: Map<string, string[]>;
+    buffers: Map<string, MessageBuffer>;
+    channelCooldowns: CooldownManager;
 
     onMessageDeleteFn;
     onMessageDeleteBulkFn;

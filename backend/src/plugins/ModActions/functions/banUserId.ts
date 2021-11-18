@@ -19,6 +19,7 @@ import { BanOptions, BanResult, IgnoredEventType, ModActionsPluginType } from ".
 import { getDefaultContactMethods } from "./getDefaultContactMethods";
 import { ignoreEvent } from "./ignoreEvent";
 import { LogsPlugin } from "../../Logs/LogsPlugin";
+import { registerExpiringTempban } from "../../../data/loops/expiringTempbansLoop";
 
 /**
  * Ban the specified user id, whether or not they're actually on the server at the time. Generates a case.
@@ -104,15 +105,19 @@ export async function banUserId(
     };
   }
 
+  const tempbanLock = await pluginData.locks.acquire(`tempban-${user.id}`);
   const existingTempban = await pluginData.state.tempbans.findExistingTempbanForUserId(user.id);
   if (banTime && banTime > 0) {
     const selfId = pluginData.client.user!.id;
     if (existingTempban) {
-      pluginData.state.tempbans.updateExpiryTime(user.id, banTime, banOptions.modId ?? selfId);
+      await pluginData.state.tempbans.updateExpiryTime(user.id, banTime, banOptions.modId ?? selfId);
     } else {
-      pluginData.state.tempbans.addTempban(user.id, banTime, banOptions.modId ?? selfId);
+      await pluginData.state.tempbans.addTempban(user.id, banTime, banOptions.modId ?? selfId);
     }
+    const tempban = (await pluginData.state.tempbans.findExistingTempbanForUserId(user.id))!;
+    registerExpiringTempban(tempban);
   }
+  tempbanLock.unlock();
 
   // Create a case for this action
   const modId = banOptions.caseArgs?.modId || pluginData.client.user!.id;
